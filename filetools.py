@@ -2,7 +2,13 @@ DELIMITER = ', ' # Data delimiter in the CSV files
 NCOLS_PER_CHANNEL = 5 # Number of data columns per phasemeter channel
 
 import sys
+import csv
+from io import TextIOWrapper
 import scipy.io
+import zipfile
+import tarfile
+import gzip
+from py7zr import SevenZipFile
 import numpy as np
 import pandas as pd
 import logging
@@ -76,12 +82,92 @@ def moku_mat_to_csv(mat_file, out_file=None, delimiter=DELIMITER):
 
     return out_file
 
-def parse_header(filename, row_fs=None, delimiter=DELIMITER, row_t0=None, fs_hint="rate", t0_hint="Acquired"):
+def parse_csv_file(filename, delimiter=None):
     """
-    Parse the header of the file.
+    Parse a CSV file. It is potentially packaged in ZIP, TAR, GZ, or 7z format.
 
     Args:
         filename (str): Location of the file
+
+    Returns:
+        num_cols (int): Number of columns in the data
+        num_rows (int): Total number of rows (including headers)
+        num_header_rows (int): Number of detected header lines
+        header (list): List of header lines
+    """
+    def process_stream(file_obj):
+        header_symbols = ['#', '%', '!', '@', ';', '&', '*', '/']
+        header = []
+        num_header_rows = 0
+        num_rows = 0
+        data_lines_sample = []
+        num_cols = None
+
+        # Wrap binary streams in text wrapper
+        if isinstance(file_obj.read(0), bytes):
+            file_obj = TextIOWrapper(file_obj, encoding='utf-8')
+        file_obj.seek(0)
+
+        for line in file_obj:
+            num_rows += 1
+            if any(line.startswith(symbol) for symbol in header_symbols):
+                header.append(line)
+                num_header_rows += 1
+            else:
+                # Capture a few non-header lines to detect delimiter
+                if len(data_lines_sample) < 5 and line.strip():
+                    data_lines_sample.append(line)
+                # Try to determine number of columns from the first non-empty, non-header line
+                if num_cols is None and line.strip():
+                    try:
+                        sniffed = csv.Sniffer().sniff(''.join(data_lines_sample))
+                        detected_delimiter = sniffed.delimiter
+                    except csv.Error:
+                        detected_delimiter = delimiter if delimiter else ','
+                    num_cols = len(line.strip().split(detected_delimiter))
+        if num_cols is None:
+            raise ValueError("No valid data lines found to determine column count.")
+        return num_cols, num_rows, num_header_rows, header
+
+    def process_file(path):
+        if zipfile.is_zipfile(path):
+            with zipfile.ZipFile(path, 'r') as zip_ref:
+                first_file_name = zip_ref.namelist()[0]
+                with zip_ref.open(first_file_name, 'r') as f:
+                    return process_stream(f)
+        elif tarfile.is_tarfile(path):
+            with tarfile.open(path, 'r') as tar_ref:
+                first_member = tar_ref.getmembers()[0]
+                with tar_ref.extractfile(first_member) as f:
+                    return process_stream(f)
+        elif path.endswith('.gz'):
+            with gzip.open(path, 'rb') as f:
+                return process_stream(f)
+        elif path.endswith('.7z'):
+            with SevenZipFile(path, 'r') as seven_zip_ref:
+                first_file_name = seven_zip_ref.getnames()[0]
+                with seven_zip_ref.open(first_file_name) as f:
+                    return process_stream(f)
+        else:
+            with open(path, 'r', encoding='utf-8') as f:
+                return process_stream(f)
+
+    logger.debug(f"Reading from file: {filename}")
+    num_cols, num_rows, num_header_rows, header = process_file(filename)
+
+    if num_header_rows == 0:
+        raise ValueError("No header lines detected. Ensure the file format is correct.")
+
+    logger.debug(f"File contains {num_rows} total rows, {num_header_rows} header rows, and {num_cols} columns")
+    return num_cols, num_rows, num_header_rows, header
+
+
+def parse_moku_phasemeter_header(file_header, row_fs=None, row_t0=None, fs_hint="rate", t0_hint="Acquired"):
+    """
+    Parse a Moku phasemeter CSV file header.
+
+    Args:
+        header (str): The file header
         row_fs (int, optional): Row number containing acquisition rate
         row_t0 (int, optional): Row number containing start time
         fs_hint (str, optional): String hint to locate the acquisition rate line (default: "rate")
@@ -93,35 +179,12 @@ def parse_header(filename, row_fs=None, delimiter=DELIMITER, row_t0=None, fs_hin
         num_header_lines (int): Number of detected header lines
         num_columns (int): Number of columns in the data
     """
-    logger.debug(f"Reading metadata from file: {filename}")
-
-    # Read the first 100 lines to detect header
-    file_header = read_lines(filename, 100)
-
-    # Detect the number of header lines
-    special_chars = {'$', '%', '#', '!', '*'}
-    num_header_lines = 0
-    for line in file_header:
-        if any(char in line for char in special_chars):
-            num_header_lines += 1
-        else:
-            break  # Stop counting when we reach a non-header line
-
-    logger.debug(f"Detected {num_header_lines} header lines")
-
-    if num_header_lines == 0:
-        raise ValueError("No header lines detected. Ensure the file format is correct.")
-
-    last_header_line = file_header[num_header_lines - 1]  # Last detected header line
-    num_columns = last_header_line.count(delimiter) + 1  # Number of columns based on commas
-
-    logger.debug(f"Detected {num_columns} columns in the data")
-
     fs = None
     date = None
+    num_header_rows = len(file_header)
 
     # First attempt to use row_fs if provided
-    if row_fs is not None and row_fs <= num_header_lines:
+    if row_fs is not None and row_fs <= num_header_rows:
         try:
             fs = float(file_header[row_fs-1].split(': ')[1].split(' ')[0])
         except (IndexError, ValueError):
@@ -129,7 +192,7 @@ def parse_header(filename, row_fs=None, delimiter=DELIMITER, row_t0=None, fs_hin
 
     # If fs is not found, use hint search
     if fs is None:
-        for line in file_header[:num_header_lines]:
+        for line in file_header[:num_header_rows]:
             if fs_hint in line:
                 try:
                     fs = float(line.split(': ')[1].split(' ')[0])
@@ -137,10 +200,11 @@ def parse_header(filename, row_fs=None, delimiter=DELIMITER, row_t0=None, fs_hin
                 except (IndexError, ValueError):
                     logger.warning(f"Failed to parse fs from line containing {fs_hint}.")
 
+    logger.debug(f'Moku phasemeter metadata:')
     logger.debug(f'    fs = {fs}')
 
     # First attempt to use row_t0 if provided
-    if row_t0 is not None and row_t0 <= num_header_lines:
+    if row_t0 is not None and row_t0 <= num_header_rows:
         try:
             date = pd.to_datetime(file_header[row_t0-1].split(f'% {t0_hint} ')[1].strip())
         except (IndexError, ValueError):
@@ -148,7 +212,7 @@ def parse_header(filename, row_fs=None, delimiter=DELIMITER, row_t0=None, fs_hin
 
     # If t0 is not found, use hint search
     if date is None:
-        for line in file_header[:num_header_lines]:
+        for line in file_header[:num_header_rows]:
             if t0_hint in line:
                 try:
                     date = pd.to_datetime(line.split(f'% {t0_hint} ')[1].strip())
@@ -157,8 +221,8 @@ def parse_header(filename, row_fs=None, delimiter=DELIMITER, row_t0=None, fs_hin
                     logger.warning(f"Failed to parse t0 from line containing {t0_hint}.")
 
     logger.debug(f'    t0 = {date}')
-
-    return date, fs, num_header_lines, num_columns
+    
+    return fs, date
 
 def get_columns_with_nans(df):
     """
