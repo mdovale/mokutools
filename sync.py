@@ -292,8 +292,6 @@ def main():
     metadata1 = read_lines(file1_filename, file1_header_rows)
     metadata2 = read_lines(file2_filename, file1_header_rows)
 
-    del mo1, mo2
-
     metadata1[0] += ' (Master)'
     metadata2[0] += ' (Slave)'
 
