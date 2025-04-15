@@ -78,7 +78,8 @@ def moku_mat_to_csv(mat_file, out_file=None, delimiter=DELIMITER):
     if out_file is None:
         out_file = mat_file + '.csv'
 
-    np.savetxt(out_file, data_array, delimiter=delimiter, header=header, comments="", fmt="%.14f")
+    with open(out_file, 'w', newline='') as f:
+        np.savetxt(f, data_array, delimiter=delimiter, header=header, comments="", fmt="%.14f")
 
     return out_file
 
