@@ -18,6 +18,7 @@ class MokuPhasemeterObject():
             logger = logging.getLogger(__name__)
 
         if is_mat_file(filename):
+            logger.debug(f"{filename} is a Matlab file, converting to CSV for further processing...")
             self.filename = moku_mat_to_csv(filename)
         else:
             self.filename = filename

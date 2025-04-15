@@ -57,11 +57,12 @@ p_lpsd = {"olap":"default",
 
 # : ===== Main program ====================
 def main():
-    logger.debug(f"moku-sync v{VERSION} - Starting up...")
+    logger.debug(f"mokusync v{VERSION} - Starting up...")
     parser = argparse.ArgumentParser(description="Liquid Instruments Phasemeter Synchronization: mokusync")
     parser.add_argument('-d', '--debug', action='store_true', help="Enable debug messages")
     parser.add_argument('-s', '--start', type=float, default=0.0, help="Start time in seconds")
-    parser.add_argument('-t', '--duration', type=float, default=0.0, help="Duration in seconds")
+    parser.add_argument('-t', '--synctime', type=float, default=0.0, help="Duration in seconds of the data chunk for synchronization")
+    parser.add_argument('-T', '--totaltime', type=float, default=0.0, help="Total time in seconds to process from the input files")
     args = parser.parse_args()
 
     if args.debug:
@@ -110,18 +111,25 @@ def main():
         logger.debug('    ' + file1 + ' (Master)')
         logger.debug('    ' + file2 + ' (Slave)')
 
-    start_time = float(args.start)
-    duration = float(args.duration)
+    if file1 == file2:
+        logger.error(f"Error: Two different output files are needed")
+        pool.close()
+        pool.join()
+        sys.exit(1)
 
-    if duration == 0.0:
-        duration = None
+    start_time = float(args.start)
+    synctime = float(args.synctime)
+    totaltime = float(args.totaltime)
+
+    if totaltime == 0.0:
+        totaltime = None
 
     logger.debug("Loading data, please wait...")
-    mo1 = MokuPhasemeterObject(file1, start_time=start_time, duration=duration, prefix='1_', logger=logger)
+    mo1 = MokuPhasemeterObject(file1, start_time=start_time, duration=totaltime, prefix='1_', logger=logger)
     fs = mo1.fs
     logger.debug("    * Master device data loaded successfully")
 
-    mo2 = MokuPhasemeterObject(file2, start_time=start_time, duration=duration, prefix='2_', logger=logger)
+    mo2 = MokuPhasemeterObject(file2, start_time=start_time, duration=totaltime, prefix='2_', logger=logger)
     logger.debug("    * Slave device data loaded successfully")
 
     # Check: are the files sampled at the same frequency?
@@ -147,11 +155,11 @@ def main():
         sys.exit(1)
 
     record_lengths = [(len(mo1.df) / fs), (len(mo2.df) / fs)] # Data stream durations in seconds
-    max_duration = min(record_lengths) - start_time  # Maximum overlapping time between datasets in seconds
+    max_totaltime = min(record_lengths) - start_time  # Maximum overlapping time between datasets in seconds
 
-    if (duration is None) or (duration >= max_duration):
-        logger.debug(f"Truncating data streams to maximum overlap section of {max_duration:.2f} seconds")
-        end_row = int(max_duration * fs)  # Calculate the end row based on max overlap
+    if (totaltime is None) or (totaltime >= max_totaltime):
+        logger.debug(f"Truncating data streams to maximum overlap section of {max_totaltime:.2f} seconds")
+        end_row = int(max_totaltime * fs)  # Calculate the end row based on max overlap
         mo1.df = mo1.df.iloc[:end_row].copy()
         mo1.df.reset_index(drop=True, inplace=True)
         mo2.df = mo2.df.iloc[:end_row].copy()
@@ -246,10 +254,20 @@ def main():
     logger.debug(f"    * RMS value of master signal: {rms1:.6}")
     logger.debug(f"    * RMS value of slave signal: {rms2:.6}")
 
-    logger.debug("Calling synctools::sync_signals...")
+    if (synctime > 0.0) and (synctime >= max_totaltime):
+        logger.warning(f"Cannot use {synctime:.2f} seconds for synchronization when the maximum overlap is {max_totaltime:.2f} seconds")
+
+    if (synctime > 0.0) and (synctime < max_totaltime):
+        in1 = np.array(df[sig_master].iloc[:int(synctime*fs)])
+        in2 = np.array(df[sig_slave].iloc[:int(synctime*fs)])
+    else:
+        in1 = np.array(df[sig_master])
+        in2 = np.array(df[sig_slave])
+
+    logger.debug(f"Calling synctools::sync_signals with inputs of length {len(in1):d}...")
     n_truncate = int(2*abs(dt_seconds*fs))
     unsync, sync = sync_signals(
-                        in_signals=[np.array(df[sig_master]), np.array(df[sig_slave])], 
+                        in_signals=[in1, in2],
                         fs=fs, 
                         p_lpsd=p_lpsd, 
                         init_offsets=[dt_seconds], 
@@ -290,7 +308,7 @@ def main():
     logger.debug('Saving data...')
 
     metadata1 = read_lines(file1_filename, file1_header_rows)
-    metadata2 = read_lines(file2_filename, file1_header_rows)
+    metadata2 = read_lines(file2_filename, file2_header_rows)
 
     metadata1[0] += ' (Master)'
     metadata2[0] += ' (Slave)'
