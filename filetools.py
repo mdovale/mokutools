@@ -12,7 +12,6 @@ from py7zr import SevenZipFile
 import numpy as np
 import pandas as pd
 import logging
-logger = logging.getLogger(__name__)
 
 def read_lines(filename, num_lines):
     """
@@ -35,7 +34,7 @@ def read_lines(filename, num_lines):
                 lines.append(line.strip())
         return lines
     except Exception as e:
-        logger.error(f"Error: {e}")
+        print(f"Error: {e}")
         sys.exit(1)
 
 def is_mat_file(file_path):
@@ -83,7 +82,7 @@ def moku_mat_to_csv(mat_file, out_file=None, delimiter=DELIMITER):
 
     return out_file
 
-def parse_csv_file(filename, delimiter=None):
+def parse_csv_file(filename, delimiter=None, logger=None):
     """
     Parse a CSV file. It is potentially packaged in ZIP, TAR, GZ, or 7z format.
 
@@ -96,6 +95,9 @@ def parse_csv_file(filename, delimiter=None):
         num_header_rows (int): Number of detected header lines
         header (list): List of header lines
     """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
     def process_stream(file_obj):
         header_symbols = ['#', '%', '!', '@', ';', '&', '*', '/']
         header = []
@@ -163,7 +165,7 @@ def parse_csv_file(filename, delimiter=None):
     return num_cols, num_rows, num_header_rows, header
 
 
-def parse_moku_phasemeter_header(file_header, row_fs=None, row_t0=None, fs_hint="rate", t0_hint="Acquired"):
+def parse_moku_phasemeter_header(file_header, row_fs=None, row_t0=None, fs_hint="rate", t0_hint="Acquired", logger=None):
     """
     Parse a Moku phasemeter CSV file header.
 
@@ -180,6 +182,9 @@ def parse_moku_phasemeter_header(file_header, row_fs=None, row_t0=None, fs_hint=
         num_header_lines (int): Number of detected header lines
         num_columns (int): Number of columns in the data
     """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
     fs = None
     date = None
     num_header_rows = len(file_header)

@@ -116,12 +116,12 @@ def main():
     if duration == 0.0:
         duration = None
 
-    logger.info("Loading data, please wait...")
-    mo1 = MokuPhasemeterObject(file1, start_time=start_time, duration=duration, prefix='1_')
+    logger.debug("Loading data, please wait...")
+    mo1 = MokuPhasemeterObject(file1, start_time=start_time, duration=duration, prefix='1_', logger=logger)
     fs = mo1.fs
     logger.debug("    * Master device data loaded successfully")
 
-    mo2 = MokuPhasemeterObject(file2, start_time=start_time, duration=duration, prefix='2_')
+    mo2 = MokuPhasemeterObject(file2, start_time=start_time, duration=duration, prefix='2_', logger=logger)
     logger.debug("    * Slave device data loaded successfully")
 
     # Check: are the files sampled at the same frequency?
@@ -246,15 +246,19 @@ def main():
 
     logger.debug("Calling synctools::sync_signals...")
     n_truncate = int(2*abs(dt_seconds*fs))
-    unsync, sync = sync_signals([np.array(df[sig_master]), np.array(df[sig_slave])], 
-                        fs, 
-                        p_lpsd, 
-                        [dt_seconds], 
-                        MODEL, 
-                        DOMAIN, 
-                        SOLVER, 
-                        INTERP_ORDER, 
-                        n_truncate)
+    unsync, sync = sync_signals(
+                        in_signals=[np.array(df[sig_master]), np.array(df[sig_slave])], 
+                        fs=fs, 
+                        p_lpsd=p_lpsd, 
+                        init_offsets=[dt_seconds], 
+                        model=MODEL, 
+                        domain=DOMAIN, 
+                        method=SOLVER, 
+                        interp_order=INTERP_ORDER, 
+                        n_truncate=n_truncate,
+                        clock_refs=None,
+                        pt_list=None,
+                        logger=logger)
 
     dt = sync.timer_offsets[0]
 

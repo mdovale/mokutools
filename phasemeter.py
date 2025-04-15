@@ -4,7 +4,6 @@ from spectools.lpsd import ltf
 import spectools.dsp as dsp
 from mokutools.filetools import *
 import logging
-logger = logging.getLogger(__name__)
 
 def moku_phasemeter_labels(nchan):
     labels = ['time']
@@ -13,16 +12,19 @@ def moku_phasemeter_labels(nchan):
     return labels
 
 class MokuPhasemeterObject():
-    def __init__(self, filename, start_time=None, duration=None, prefix=None):
+    def __init__(self, filename, start_time=None, duration=None, prefix=None, logger=None):
+
+        if logger is None:
+            logger = logging.getLogger(__name__)
 
         if is_mat_file(filename):
             self.filename = moku_mat_to_csv(filename)
         else:
             self.filename = filename
 
-        self.ncols, self.nrows, self.header_rows, self.header = parse_csv_file(self.filename)
+        self.ncols, self.nrows, self.header_rows, self.header = parse_csv_file(self.filename, logger=logger)
 
-        self.fs, self.date = parse_moku_phasemeter_header(self.header)
+        self.fs, self.date = parse_moku_phasemeter_header(self.header, logger=logger)
         
         self.nchan = (self.ncols-1)//NCOLS_PER_CHANNEL
         
@@ -50,7 +52,7 @@ class MokuPhasemeterObject():
 
         logger.debug(f"    * Moku phasemeter data loaded successfully")
         logger.debug(f"    * Loaded {self.ndata} rows, {self.duration} seconds")
-        logger.info(f"{self.df.head()}")
+        logger.debug(f"\n{self.df.head()}")
 
         for i in range(self.nchan): # Convert phase in cycles to phase in radians
             self.df[f'{i+1}_phase'] = self.df[f'{i+1}_cycles']*2*np.pi
@@ -60,10 +62,5 @@ class MokuPhasemeterObject():
 
         if prefix is not None:
             self.df = self.df.add_prefix(prefix)
-        
 
-def frequency_spectral_analysis():
-    return
 
-def phase_spectral_analysis():
-    return
