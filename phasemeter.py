@@ -13,7 +13,7 @@ def moku_phasemeter_labels(nchan):
     return labels
 
 class MokuPhasemeterObject():
-    def __init__(self, filename, start_time=None, duration=None):
+    def __init__(self, filename, start_time=None, duration=None, prefix=None):
 
         if is_mat_file(filename):
             self.filename = moku_mat_to_csv(filename)
@@ -55,6 +55,9 @@ class MokuPhasemeterObject():
 
         for i in range(self.nchan): # Integrate frequency in Hz to find phase in radians
             self.df[f'{i+1}_freq2phase'] = dsp.frequency2phase(self.df[f'{i+1}_freq'], self.fs)
+
+        if prefix is not None:
+            self.df = self.df.add_prefix(prefix)
         
 
 def frequency_spectral_analysis():
