@@ -61,7 +61,7 @@ def main():
     parser = argparse.ArgumentParser(description="Liquid Instruments Phasemeter Synchronization: mokusync")
     parser.add_argument('-d', '--debug', action='store_true', help="Enable debug messages")
     parser.add_argument('-s', '--start', type=float, default=0.0, help="Start time in seconds")
-    parser.add_argument('-t', '--duration', type=float, default=0.0, help="End time in seconds")
+    parser.add_argument('-t', '--duration', type=float, default=0.0, help="Duration in seconds")
     args = parser.parse_args()
 
     if args.debug:
@@ -113,11 +113,14 @@ def main():
     start_time = float(args.start)
     duration = float(args.duration)
 
-    logger.debug("Loading data, please wait...")    
+    if duration == 0.0:
+        duration = None
+
+    logger.info("Loading data, please wait...")
     mo1 = MokuPhasemeterObject(file1, start_time=start_time, duration=duration, prefix='1_')
+    fs = mo1.fs
     logger.debug("    * Master device data loaded successfully")
 
-    logger.debug("Loading data, please wait...")    
     mo2 = MokuPhasemeterObject(file2, start_time=start_time, duration=duration, prefix='2_')
     logger.debug("    * Slave device data loaded successfully")
 
@@ -127,8 +130,6 @@ def main():
         pool.close()
         pool.join()
         sys.exit(1)
-
-    fs = mo1.fs
 
     sig_master = '1_' + MASTER_COL
     sig_slave  = '2_' + SLAVE_COL
@@ -145,6 +146,20 @@ def main():
         pool.join()
         sys.exit(1)
 
+    record_lengths = [(len(mo1.df) / fs), (len(mo2.df) / fs)] # Data stream durations in seconds
+    max_duration = min(record_lengths) - start_time  # Maximum overlapping time between datasets in seconds
+
+    if (duration is None) or (duration >= max_duration):
+        logger.debug(f"Truncating data streams to maximum overlap section of {max_duration:.2f} seconds")
+        end_row = int(max_duration * fs)  # Calculate the end row based on max overlap
+        mo1.df = mo1.df.iloc[:end_row].copy()
+        mo1.df.reset_index(drop=True, inplace=True)
+        mo2.df = mo2.df.iloc[:end_row].copy()
+        mo2.df.reset_index(drop=True, inplace=True)
+        logger.debug(f"Master stream length: {len(mo1.df)}, Slave stream length: {len(mo2.df)}")
+
+    logger.debug(f"Working on {mo1.duration} seconds of data sampled at {mo1.fs} Hz ({mo1.nrows} points)")
+
     # Figure out initial time offset from file metadata
     dt_datetime = mo1.date - mo2.date # Slave - Master
     dt_seconds = dt_datetime.total_seconds()
@@ -154,14 +169,6 @@ def main():
         logger.debug(f"Time offset from metadata: {dt_seconds:.2f} s, Slave device ahead")
     if abs(dt_seconds) > 100.0:
         logger.warning(f"Warning: The initial time offset of {dt_seconds:.2f} seconds is very high!")
-
-    # Figure out data length
-    start_row = int(start_time*fs)
-    end_row = start_row + int(duration*fs)
-    n_rows = end_row - start_row
-    real_duration = n_rows/fs
-
-    logger.debug(f"Working on {real_duration} seconds of data sampled at {fs} Hz ({n_rows} points)")
 
     # Assert that the DataFrames are of the same length
     if len(mo1.df) > len(mo2.df):
@@ -220,7 +227,7 @@ def main():
 
     # When using phase signals for sync, convert them to frequency in Hertz by differentiation
     if 'phase' in sig_master:
-        df[sig_master+'_to_freq'] = np.diff(df[MASTER_COL], prepend=np.nan) / (2*np.pi/fs)
+        df[sig_master+'_to_freq'] = np.diff(df[sig_master], prepend=np.nan) / (2*np.pi/fs)
         sig_master = sig_master+'_to_freq'
         non_nan_columns_df1.append(sig_master)
 
@@ -271,7 +278,7 @@ def main():
     df['phase_unsynced'] = df['phase_unsynced'] - np.polyval(np.polyfit(np.arange(len(df)), df['phase_unsynced'], 1), np.arange(len(df)))
     df['phase_synced'] = df['phase_synced'] - np.polyval(np.polyfit(np.arange(len(df)), df['phase_synced'], 1), np.arange(len(df)))
 
-    df.insert(0, 'time', np.arange(len(df))/fs)
+    df.insert(0, 'time', np.arange(len(df))/fs) # Absolute time
 
     # Save data to file
     logger.debug('Saving data...')

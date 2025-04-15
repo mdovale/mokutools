@@ -45,7 +45,8 @@ class MokuPhasemeterObject():
         if len(self.df) != self.ndata:
             self.end_row = len(self.df) - 1
             self.ndata = len(self.df)
-            self.duration = self.ndata/self.fs
+            
+        self.duration = self.ndata/self.fs
 
         logger.debug(f"    * Moku phasemeter data loaded successfully")
         logger.debug(f"    * Loaded {self.ndata} rows, {self.duration} seconds")
