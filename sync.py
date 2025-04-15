@@ -1,6 +1,6 @@
-VERSION = '1.02'
+VERSION = '1.03'
 """
-mokusync: Synchronization of two Moku:Pro phasemeter data streams
+mokusync: Synchronization of two Liquid Instruments Moku phasemeter data streams
 
 The two Moku share a clock, but their data streams are 
 misaligned by a non-integer number of samples
@@ -9,8 +9,10 @@ Miguel Dovale (mdovale@arizona.edu)
 Tucson, 2025
 """
 from mokutools.filetools import *
+from mokutools.phasemeter import MokuPhasemeterObject
 import os
 import sys
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -22,10 +24,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # : ===== User variables ====================
-START_TIME = 100.0 # Seconds to crop from the beginning of the two files
-DURATION = 0.5*3600 # Measurement duration to analyze
-MASTER_COL = '2_phase' # Quantity on master device to use for sync (<channel>_<freq/phase>)
-SLAVE_COL = '2_phase' # Quantity on slave device to use for sync (<channel>_<freq/phase>)
+MASTER_COL = '1_freq' # Quantity on master device to use for sync (<channel>_<freq/phase>)
+SLAVE_COL = '1_freq' # Quantity on slave device to use for sync (<channel>_<freq/phase>)
 """
 The options for MASTER_COL and SLAVE_COL are '<ch>_<signal>':
     '1_phase', '2_phase', '3_phase', '4_phase'
@@ -58,6 +58,14 @@ p_lpsd = {"olap":"default",
 # : ===== Main program ====================
 def main():
     logger.debug(f"moku-sync v{VERSION} - Starting up...")
+    parser = argparse.ArgumentParser(description="Liquid Instruments Phasemeter Synchronization: mokusync")
+    parser.add_argument('-d', '--debug', action='store_true', help="Enable debug messages")
+    parser.add_argument('-s', '--start', type=float, default=0.0, help="Start time in seconds")
+    parser.add_argument('-t', '--duration', type=float, default=0.0, help="End time in seconds")
+    args = parser.parse_args()
+
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
     
     # Multiprocessing
     pool = multiprocessing.Pool()
@@ -101,36 +109,44 @@ def main():
         logger.debug('Files selected:')
         logger.debug('    ' + file1 + ' (Master)')
         logger.debug('    ' + file2 + ' (Slave)')
-    
-    if is_mat_file(file1):
-        logger.debug("Detected a MATLAB file, converting to CSV...")
-        file1 = moku_mat_to_csv(file1)
-        
-    if is_mat_file(file2):
-        logger.debug("Detected a MATLAB file, converting to CSV...")
-        file2 = moku_mat_to_csv(file2)
 
-    # Parse header of the two input files
-    date1, fs, header1, cols1 = parse_header(file1)
-    date2, fs2, header2, cols2 = parse_header(file2)
+    start_time = float(args.start)
+    duration = float(args.duration)
 
-    labels1 = ['time']
-    for i in range((cols1-1)//NCOLS_PER_CHANNEL):
-        labels1 = labels1 + [f'1_{i+1}_set_f', f'1_{i+1}_freq', f'1_{i+1}_phase', f'1_{i+1}_i', f'1_{i+1}_q']
+    logger.debug("Loading data, please wait...")    
+    mo1 = MokuPhasemeterObject(file1, start_time=start_time, duration=duration, prefix='1_')
+    logger.debug("    * Master device data loaded successfully")
 
-    labels2 = ['time']
-    for i in range((cols2-1)//NCOLS_PER_CHANNEL):
-        labels2 = labels2 + [f'2_{i+1}_set_f', f'2_{i+1}_freq', f'2_{i+1}_phase', f'2_{i+1}_i', f'2_{i+1}_q']
+    logger.debug("Loading data, please wait...")    
+    mo2 = MokuPhasemeterObject(file2, start_time=start_time, duration=duration, prefix='2_')
+    logger.debug("    * Slave device data loaded successfully")
 
     # Check: are the files sampled at the same frequency?
-    if fs != fs2:
+    if mo1.fs != mo2.fs:
         logger.error("Error: The input files report different sampling frequencies")
         pool.close()
         pool.join()
         sys.exit(1)
 
+    fs = mo1.fs
+
+    sig_master = '1_' + MASTER_COL
+    sig_slave  = '2_' + SLAVE_COL
+
+    if sig_master not in mo1.df:
+        logger.error(f"Error: {MASTER_COL} not found in the Master device data file")
+        pool.close()
+        pool.join()
+        sys.exit(1)
+
+    if sig_slave not in mo2.df:
+        logger.error(f"Error: {SLAVE_COL} not found in the Master device data file")
+        pool.close()
+        pool.join()
+        sys.exit(1)
+
     # Figure out initial time offset from file metadata
-    dt_datetime = date1 - date2 # Slave - Master
+    dt_datetime = mo1.date - mo2.date # Slave - Master
     dt_seconds = dt_datetime.total_seconds()
     if dt_seconds < 0:
         logger.debug(f"Time offset from metadata: {dt_seconds:.2f} s, Master device ahead")
@@ -140,34 +156,20 @@ def main():
         logger.warning(f"Warning: The initial time offset of {dt_seconds:.2f} seconds is very high!")
 
     # Figure out data length
-    start_row = int(START_TIME*fs)
-    end_row = start_row + int(DURATION*fs)
+    start_row = int(start_time*fs)
+    end_row = start_row + int(duration*fs)
     n_rows = end_row - start_row
     real_duration = n_rows/fs
-    logger.debug(f"Attempting to analyze {real_duration:.2f} s ({n_rows} rows) starting after {START_TIME:.2f} s (row {start_row})")
 
-    # Data in
-    logger.debug("Loading data, please wait...")
-
-    # Read in file #1
-    df1 = pd.read_csv(file1, delimiter=DELIMITER, skiprows=header1, nrows=end_row, names=labels1, engine='python')
-    df1.drop(index=np.arange(start_row), inplace=True)
-    df1.drop(labels='time', axis=1, inplace=True)
-    logger.debug("    * Master device data loaded successfully")
-
-    # Read in file #2
-    df2 = pd.read_csv(file2, delimiter=DELIMITER, skiprows=header2, nrows=end_row, names=labels2, engine='python')
-    df2.drop(index=np.arange(start_row), inplace=True)
-    df2.drop(labels='time', axis=1, inplace=True)
-    logger.debug("    * Slave device data loaded successfully")
+    logger.debug(f"Working on {real_duration} seconds of data sampled at {fs} Hz ({n_rows} points)")
 
     # Assert that the DataFrames are of the same length
-    if len(df1) > len(df2):
+    if len(mo1.df) > len(mo2.df):
         logger.error(f"Error: {file2} is shorter than required")
         pool.close()
         pool.join()
         sys.exit(1)
-    elif len(df1) < len(df2):
+    elif len(mo1.df) < len(mo2.df):
         logger.error(f"Error: {file1} is shorter than required")
         pool.close()
         pool.join()
@@ -175,8 +177,8 @@ def main():
 
     # Find columns with NaNs in both DataFrames
     logger.debug("Looking for NaNs in data...")
-    df1_nans = get_columns_with_nans(df1)
-    df2_nans = get_columns_with_nans(df2)
+    df1_nans = get_columns_with_nans(mo1.df)
+    df2_nans = get_columns_with_nans(mo2.df)
 
     if len(df1_nans) > 0:
         for col, num in df1_nans.items():
@@ -186,14 +188,12 @@ def main():
         for col, num in df2_nans.items():
             logger.warning(f"Warning: NaNs detected in {file2} column {num} ({col}) ")
 
-    sig_master = '1_' + MASTER_COL
     if sig_master in df1_nans:
         logger.error("Error: The specified master device column contains NaNs")
         pool.close()
         pool.join()
         sys.exit(-1)
 
-    sig_slave = '2_' + SLAVE_COL
     if sig_slave in df2_nans:
         logger.error("Error: The specified slave device column contains NaNs")
         pool.close()
@@ -201,28 +201,26 @@ def main():
         sys.exit(-1)
     
     # Identify columns without NaNs in both DataFrames
-    non_nan_columns_df1 = [col for col in df1.columns if col not in df1_nans]
-    non_nan_columns_df2 = [col for col in df2.columns if col not in df2_nans]
+    non_nan_columns_df1 = [col for col in mo1.df.columns if col not in df1_nans]
+    non_nan_columns_df2 = [col for col in mo2.df.columns if col not in df2_nans]
 
     # Subset the DataFrames to only include non-NaN columns
-    df1_non_nan = df1[non_nan_columns_df1]
-    df2_non_nan = df2[non_nan_columns_df2]
+    df1_non_nan = mo1.df[non_nan_columns_df1].copy()
+    df2_non_nan = mo2.df[non_nan_columns_df2].copy()
 
     # Concatenate the DataFrames along columns (axis=1)
     logger.debug("Creating single DataFrame...")
     df = pd.concat([df1_non_nan.reset_index(drop=True), df2_non_nan.reset_index(drop=True)], axis=1)
 
-    # Free up memory
-    del df1, df2, df1_non_nan, df2_non_nan
+    file1_header_rows = mo1.header_rows
+    file2_header_rows = mo2.header_rows
 
-    # Convert phase values from cycles to radians
-    for sig in non_nan_columns_df1 + non_nan_columns_df2:
-        if 'phase' in sig:
-            df[sig] = df[sig]*2*np.pi 
+    # Free up memory
+    del mo1, mo2, df1_non_nan, df2_non_nan
 
     # When using phase signals for sync, convert them to frequency in Hertz by differentiation
     if 'phase' in sig_master:
-        df[sig_master+'_to_freq'] = np.diff(df[sig_master], prepend=np.nan) / (2*np.pi/fs)
+        df[sig_master+'_to_freq'] = np.diff(df[MASTER_COL], prepend=np.nan) / (2*np.pi/fs)
         sig_master = sig_master+'_to_freq'
         non_nan_columns_df1.append(sig_master)
 
@@ -256,7 +254,7 @@ def main():
     # Timeshift all signals from slave device
     logger.debug('Generating timeshifted outputs...')
     for sig in non_nan_columns_df2:
-        df[sig+'_shifted'] = timeshift(np.array(df[sig]), np.full(len(df), dt*fs))
+        df[sig+'_shifted'] = timeshift(np.array(df[sig]), dt*fs)
 
     # Truncate output
     df = df.iloc[n_truncate:-n_truncate] 
@@ -278,8 +276,8 @@ def main():
     # Save data to file
     logger.debug('Saving data...')
 
-    metadata1 = read_lines(file1, header1-1)
-    metadata2 = read_lines(file2, header2-1)
+    metadata1 = read_lines(file1, file1_header_rows)
+    metadata2 = read_lines(file2, file2_header_rows)
 
     metadata1[0] += ' (Master)'
     metadata2[0] += ' (Slave)'
@@ -307,29 +305,29 @@ def main():
         # Time domain plots
         logger.debug('Plotting time series data...')
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-        ax.plot(df['time'], df['freq_unsynced'], linewidth=linewidth, label=r"Unsynced", color="gray");
-        ax.plot(df['time'], df['freq_synced'], linewidth=linewidth, label=r"Synced", color="tomato");
-        ax.set_xlabel("Time (s)", fontsize=fontsize);
-        ax.set_ylabel("Frequency (Hz)", fontsize=fontsize);
+        ax.plot(df['time'], df['freq_unsynced'], linewidth=linewidth, label=r"Unsynced", color="gray")
+        ax.plot(df['time'], df['freq_synced'], linewidth=linewidth, label=r"Synced", color="tomato")
+        ax.set_xlabel("Time (s)", fontsize=fontsize)
+        ax.set_ylabel("Frequency (Hz)", fontsize=fontsize)
         ax.set_title(title, fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize);
-        ax.grid();
-        ax.legend(loc='best', edgecolor='black', fancybox=True, shadow=True, framealpha=1, fontsize=fontsize, handlelength=2.5);
-        fig.tight_layout();
-        fig.savefig(os.path.join(RESDIR,'fig_freq_t.pdf'));
+        ax.tick_params(labelsize=fontsize)
+        ax.grid()
+        ax.legend(loc='best', edgecolor='black', fancybox=True, shadow=True, framealpha=1, fontsize=fontsize, handlelength=2.5)
+        fig.tight_layout()
+        fig.savefig(os.path.join(RESDIR,'fig_freq_t.pdf'))
         logger.debug(f"    * Plot saved to {os.path.join(RESDIR,'fig_freq_t.pdf')}")
 
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-        ax.plot(df['time'], df['phase_unsynced'], linewidth=linewidth, label=r"Unsynced", color="gray");
-        ax.plot(df['time'], df['phase_synced'], linewidth=linewidth, label=r"Synced", color="tomato");
-        ax.set_xlabel("Time (s)", fontsize=fontsize);
-        ax.set_ylabel("Phase (rad)", fontsize=fontsize);
+        ax.plot(df['time'], df['phase_unsynced'], linewidth=linewidth, label=r"Unsynced", color="gray")
+        ax.plot(df['time'], df['phase_synced'], linewidth=linewidth, label=r"Synced", color="tomato")
+        ax.set_xlabel("Time (s)", fontsize=fontsize)
+        ax.set_ylabel("Phase (rad)", fontsize=fontsize)
         ax.set_title(title, fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize);
-        ax.grid();
-        ax.legend(loc='best', edgecolor='black', fancybox=True, shadow=True, framealpha=1, fontsize=fontsize, handlelength=2.5);
-        fig.tight_layout();
-        fig.savefig(os.path.join(RESDIR, 'fig_phase_t.pdf'));
+        ax.tick_params(labelsize=fontsize)
+        ax.grid()
+        ax.legend(loc='best', edgecolor='black', fancybox=True, shadow=True, framealpha=1, fontsize=fontsize, handlelength=2.5)
+        fig.tight_layout()
+        fig.savefig(os.path.join(RESDIR, 'fig_phase_t.pdf'))
         logger.debug(f"    * Plot saved to {os.path.join(RESDIR, 'fig_phase_t.pdf')}")
 
         # Compute spectrums with spectools
@@ -350,31 +348,31 @@ def main():
     
         # ASD plots
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-        ax.loglog(psd_unsynced.f, np.sqrt(psd_unsynced.Gxx), linewidth=linewidth, label=r"Unsynced", color="gray");
-        ax.loglog(psd_synced.f, np.sqrt(psd_synced.Gxx), linewidth=linewidth, label=r"Synced", color="tomato");
+        ax.loglog(psd_unsynced.f, np.sqrt(psd_unsynced.Gxx), linewidth=linewidth, label=r"Unsynced", color="gray")
+        ax.loglog(psd_synced.f, np.sqrt(psd_synced.Gxx), linewidth=linewidth, label=r"Synced", color="tomato")
         ax.set_xlim(psd_synced.f[0], psd_synced.f[-1])
-        ax.set_xlabel("Fourier frequency (Hz)", fontsize=fontsize);
-        ax.set_ylabel(r"Frequency ASD $\rm (Hz/Hz^{1/2})$", fontsize=fontsize);
+        ax.set_xlabel("Fourier frequency (Hz)", fontsize=fontsize)
+        ax.set_ylabel(r"Frequency ASD $\rm (Hz/Hz^{1/2})$", fontsize=fontsize)
         ax.set_title(title, fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize);
-        ax.grid(which='both');
-        ax.legend(loc='best', edgecolor='black', fancybox=True, shadow=True, framealpha=1, fontsize=fontsize, handlelength=2.5);
-        fig.tight_layout();
+        ax.tick_params(labelsize=fontsize)
+        ax.grid(which='both')
+        ax.legend(loc='best', edgecolor='black', fancybox=True, shadow=True, framealpha=1, fontsize=fontsize, handlelength=2.5)
+        fig.tight_layout()
         fig.savefig(os.path.join(RESDIR, 'fig_freq_asd.pdf'));
         logger.debug(f"    * Plot saved to {os.path.join(RESDIR, 'fig_freq_asd.pdf')}")
 
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-        ax.loglog(psd_unsynced.f, np.sqrt(psd_unsynced.Gxx)/psd_unsynced.f, linewidth=linewidth, label=r"Unsynced", color="gray");
-        ax.loglog(psd_synced.f, np.sqrt(psd_synced.Gxx)/psd_synced.f, linewidth=linewidth, label=r"Synced", color="tomato");
+        ax.loglog(psd_unsynced.f, np.sqrt(psd_unsynced.Gxx)/psd_unsynced.f, linewidth=linewidth, label=r"Unsynced", color="gray")
+        ax.loglog(psd_synced.f, np.sqrt(psd_synced.Gxx)/psd_synced.f, linewidth=linewidth, label=r"Synced", color="tomato")
         ax.set_xlim(psd_synced.f[0], psd_synced.f[-1])
-        ax.set_xlabel("Fourier frequency (Hz)", fontsize=fontsize);
-        ax.set_ylabel(r"Phase ASD $\rm (rad/Hz^{1/2})$", fontsize=fontsize);
+        ax.set_xlabel("Fourier frequency (Hz)", fontsize=fontsize)
+        ax.set_ylabel(r"Phase ASD $\rm (rad/Hz^{1/2})$", fontsize=fontsize)
         ax.set_title(title, fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize);
-        ax.grid(which='both');
-        ax.legend(loc='best', edgecolor='black', fancybox=True, shadow=True, framealpha=1, fontsize=fontsize, handlelength=2.5);
-        fig.tight_layout();
-        fig.savefig(os.path.join(RESDIR, 'fig_phase_asd.pdf'));
+        ax.tick_params(labelsize=fontsize)
+        ax.grid(which='both')
+        ax.legend(loc='best', edgecolor='black', fancybox=True, shadow=True, framealpha=1, fontsize=fontsize, handlelength=2.5)
+        fig.tight_layout()
+        fig.savefig(os.path.join(RESDIR, 'fig_phase_asd.pdf'))
         logger.debug(f"    * Plot saved to {os.path.join(RESDIR, 'fig_phase_asd.pdf')}")
 
     pool.close()
