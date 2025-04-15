@@ -26,7 +26,7 @@ def read_lines(filename, num_lines):
     """
     lines = []
     try:
-        with open(filename, 'r') as file:
+        with open(filename, 'r', encoding='utf-8') as file:
             for _ in range(num_lines):
                 line = file.readline()
                 if not line:
@@ -34,7 +34,7 @@ def read_lines(filename, num_lines):
                 lines.append(line.strip())
         return lines
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"read_lines error: {e}")
         sys.exit(1)
 
 def is_mat_file(file_path):

@@ -219,6 +219,8 @@ def main():
     logger.debug("Creating single DataFrame...")
     df = pd.concat([df1_non_nan.reset_index(drop=True), df2_non_nan.reset_index(drop=True)], axis=1)
 
+    file1_filename = mo1.filename
+    file2_filename = mo2.filename
     file1_header_rows = mo1.header_rows
     file2_header_rows = mo2.header_rows
 
@@ -287,8 +289,10 @@ def main():
     # Save data to file
     logger.debug('Saving data...')
 
-    metadata1 = read_lines(file1, file1_header_rows)
-    metadata2 = read_lines(file2, file2_header_rows)
+    metadata1 = read_lines(file1_filename, file1_header_rows)
+    metadata2 = read_lines(file2_filename, file1_header_rows)
+
+    del mo1, mo2
 
     metadata1[0] += ' (Master)'
     metadata2[0] += ' (Slave)'
