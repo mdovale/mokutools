@@ -20,7 +20,7 @@ class MokuPhasemeterObject():
         else:
             self.filename = filename
 
-        self.ncols, self.nrows, self.header_rows, self.header = parse_csv_file(filename)
+        self.ncols, self.nrows, self.header_rows, self.header = parse_csv_file(self.filename)
 
         self.fs, self.date = parse_moku_phasemeter_header(self.header)
         
@@ -50,6 +50,7 @@ class MokuPhasemeterObject():
 
         logger.debug(f"    * Moku phasemeter data loaded successfully")
         logger.debug(f"    * Loaded {self.ndata} rows, {self.duration} seconds")
+        logger.info(f"{self.df.head()}")
 
         for i in range(self.nchan): # Convert phase in cycles to phase in radians
             self.df[f'{i+1}_phase'] = self.df[f'{i+1}_cycles']*2*np.pi
