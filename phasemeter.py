@@ -12,7 +12,7 @@ def moku_phasemeter_labels(nchan):
     return labels
 
 class MokuPhasemeterObject():
-    def __init__(self, filename, start_time=None, duration=None, prefix=None, logger=None):
+    def __init__(self, filename, start_time=None, duration=None, prefix=None, spectrums=[], logger=None, *args, **kwargs):
 
         if logger is None:
             logger = logging.getLogger(__name__)
@@ -61,7 +61,19 @@ class MokuPhasemeterObject():
         for i in range(self.nchan): # Integrate frequency in Hz to find phase in radians
             self.df[f'{i+1}_freq2phase'] = dsp.frequency2phase(self.df[f'{i+1}_freq'], self.fs)
 
+        self.ps = {}
+
+        if len(spectrums) > 0:
+            for i in range(self.nchan):
+                if any(key in spectrums for key in ('frequency', 'freq', 'f')):
+                    self.ps[f'{i+1}_freq'] = ltf(self.df[f'{i+1}_freq'], fs=self.fs, *args, **kwargs)
+                if any(key in spectrums for key in ('phase', 'p')):
+                    self.ps[f'{i+1}_phase'] = ltf(self.df[f'{i+1}_phase'], fs=self.fs, *args, **kwargs)
+                if any(key in spectrums for key in ('frequency2phase', 'freq2phase', 'f2p')):
+                    self.ps[f'{i+1}_freq2phase'] = ltf(self.df[f'{i+1}_freq2phase'], fs=self.fs, *args, **kwargs)
+
         if prefix is not None:
             self.df = self.df.add_prefix(prefix)
+
 
 
