@@ -5,6 +5,13 @@ import spectools.dsp as dsp
 from mokutools.filetools import *
 import logging
 
+import os
+import logging
+import numpy as np
+import pandas as pd
+import ipywidgets as widgets
+from IPython.display import display
+
 class MokuPhasemeterObject:
     """
     Class for loading, parsing, and analyzing data acquired from a Moku:Pro Phasemeter.
@@ -60,19 +67,6 @@ class MokuPhasemeterObject:
         if logger is None:
             logger = logging.getLogger(__name__)
 
-        # Helper: prompt user for single file selection
-        def get_single_file_choice(files):
-            while True:
-                choice = input("Enter the number of the file to download (Q to quit): ").strip().upper()
-                if choice == 'Q':
-                    return None
-                try:
-                    idx = int(choice)
-                    if 1 <= idx <= len(files):
-                        return files[idx - 1]
-                except ValueError:
-                    pass
-
         # Handle IP-based file download
         if ip is not None:
             if filename is None:
@@ -88,10 +82,8 @@ class MokuPhasemeterObject:
                 selected_file = matches[0]
                 logger.debug(f"Single match found: {selected_file}")
             else:
-                display_menu(matches)
-                selected_file = get_single_file_choice(matches)
-                if selected_file is None:
-                    raise RuntimeError("User aborted file selection.")
+                logger.info("Multiple matching files found. Choosing the first one.")
+                selected_file = matches[0]
 
             logger.debug(f"Downloading selected file: {selected_file}")
             download_files(
@@ -102,8 +94,10 @@ class MokuPhasemeterObject:
                 output_path=output_path,
                 delete=delete
             )
-
-            base = os.path.basename(selected_file).replace(".li", ".csv")
+            if archive:
+                base = os.path.basename(selected_file).replace(".li", ".csv.zip")
+            else:
+                base = os.path.basename(selected_file).replace(".li", ".csv")
             self.filename = os.path.join(output_path or os.getcwd(), base)
         else:
             if filename is None:
