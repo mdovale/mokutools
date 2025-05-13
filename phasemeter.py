@@ -6,6 +6,43 @@ from mokutools.filetools import *
 import logging
 
 class MokuPhasemeterObject():
+    """
+    Class for loading, parsing, and analyzing data acquired from a Moku:Pro Phasemeter.
+
+    This class handles `.csv` or `.mat` files, extracts header and channel information,
+    computes derived quantities (e.g., phase in radians), and can compute spectral density
+    estimates for various time series.
+
+    Args:
+        filename (str): 
+            Path to the `.csv` or `.mat` data file acquired from the Moku Phasemeter.
+        start_time (float, optional): 
+            Start time (in seconds) for loading a subset of the data. Defaults to 0.
+        duration (float, optional): 
+            Duration (in seconds) of data to load. If not specified, loads until the end.
+        prefix (str, optional): 
+            String prefix to prepend to each column label in the data frame.
+        spectrums (list, optional): 
+            List of spectrum types to precompute (e.g., ['phase', 'frequency']).
+        logger (logging.Logger, optional): 
+            Logger for debug messages. If None, a default logger is used.
+        *args, **kwargs: 
+            Additional arguments passed to the spectral estimation function (`ltf`).
+
+    Attributes:
+        fs (float): 
+            Sampling frequency in Hz.
+        date (str): 
+            Date string extracted from the file header.
+        df (pandas.DataFrame): 
+            Loaded and processed data frame.
+        nchan (int): 
+            Number of phasemeter channels detected.
+        labels (list): 
+            List of data column labels.
+        ps (dict): 
+            Dictionary of power spectral density results keyed by 'channel_metric'.
+    """
     def __init__(self, filename, start_time=None, duration=None, prefix=None, spectrums=[], logger=None, *args, **kwargs):
 
         if logger is None:
@@ -27,7 +64,6 @@ class MokuPhasemeterObject():
 
         self.labels = self.data_labels()
 
-        # Figure out data length
         self.start_time = start_time if start_time is not None else 0.0
         self.start_row = int(start_time*self.fs) if start_time is not None else 0
         self.end_row = self.start_row + int(duration*self.fs) if duration is not None else self.nrows - self.header_rows
@@ -36,23 +72,29 @@ class MokuPhasemeterObject():
         logger.debug(f"Attempting to load {self.duration:.2f} s ({self.ndata} rows) starting after {self.start_time:.2f} s (row {self.start_row})")
         logger.debug("Loading data, please wait...")
 
-        # Read in file
-        self.df = pd.read_csv(self.filename, delimiter=DELIMITER, skiprows=self.header_rows+self.start_row, nrows=self.ndata, names=self.labels, engine='python')
+        self.df = pd.read_csv(
+            self.filename, 
+            delimiter=DELIMITER, 
+            skiprows=self.header_rows + self.start_row, 
+            nrows=self.ndata, 
+            names=self.labels, 
+            engine='python'
+        )
         
         if len(self.df) != self.ndata:
             self.end_row = len(self.df) - 1
             self.ndata = len(self.df)
             
-        self.duration = self.ndata/self.fs
+        self.duration = self.ndata / self.fs
 
         logger.debug(f"    * Moku phasemeter data loaded successfully")
         logger.debug(f"    * Loaded {self.ndata} rows, {self.duration} seconds")
         logger.debug(f"\n{self.df.head()}")
 
-        for i in range(self.nchan): # Convert phase in cycles to phase in radians
-            self.df[f'{i+1}_phase'] = self.df[f'{i+1}_cycles']*2*np.pi
+        for i in range(self.nchan):
+            self.df[f'{i+1}_phase'] = self.df[f'{i+1}_cycles'] * 2 * np.pi
 
-        for i in range(self.nchan): # Integrate frequency in Hz to find phase in radians
+        for i in range(self.nchan):
             self.df[f'{i+1}_freq2phase'] = dsp.frequency2phase(self.df[f'{i+1}_freq'], self.fs)
 
         self.ps = {}
@@ -64,26 +106,54 @@ class MokuPhasemeterObject():
             self.df = self.df.add_prefix(prefix)
 
     def data_labels(self):
+        """
+        Generate column labels for the phasemeter data based on detected channels.
+
+        Returns:
+            list:
+            A list of strings representing the expected CSV column headers, including
+            time, set frequency, measured frequency, phase (in cycles), I and Q values
+            for each channel.
+        """
         labels = ['time']
         for i in range(self.nchan):
-            labels = labels + [f'{i+1}_set_freq', f'{i+1}_freq', f'{i+1}_cycles', f'{i+1}_i', f'{i+1}_q']
+            labels += [f'{i+1}_set_freq', f'{i+1}_freq', f'{i+1}_cycles', f'{i+1}_i', f'{i+1}_q']
         return labels
 
     def spectrum(self, which='phase', channels=[], *args, **kwargs):
+        """
+        Compute and store power spectral density estimates for specified data channels.
+
+        Args:
+            which (str or list of str): 
+                Type(s) of data to analyze. Options include 'phase', 'frequency', 'freq2phase'.
+                Can be a string or list of strings.
+            channels (list or int, optional): 
+                List of integer channel numbers (1-indexed) to analyze. 
+                If empty, all channels are included.
+            *args, **kwargs: 
+                Passed directly to the spectral estimation function (`ltf`).
+
+        Returns:
+            None
+            Updates the `self.ps` dictionary in-place with the computed spectra.
+
+        Raises:
+            ValueError:
+                If the specified channel(s) do not exist in the loaded data.
+        """
         in_channels = channels
 
         if isinstance(which, str):
             which = [which]
 
-        # Normalize channels
         if isinstance(channels, int):
             channels = [channels]
-        elif not channels:  # If empty, default to all channels
+        elif not channels:
             channels = list(range(1, self.nchan + 1))
         else:
             channels = list(channels)
 
-        # Sanity check
         channels = [ch for ch in channels if 1 <= ch <= self.nchan]
 
         if not channels:
