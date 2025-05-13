@@ -1,6 +1,3 @@
-DELIMITER = ', ' # Data delimiter in the CSV files
-NCOLS_PER_CHANNEL = 5 # Number of data columns per phasemeter channel
-
 import sys
 import csv
 import os

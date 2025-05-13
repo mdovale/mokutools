@@ -1,6 +1,6 @@
 VERSION = '1.03'
 """
-mokusync: Synchronization of two Liquid Instruments Moku phasemeter data streams
+mokutools.sync: Synchronization of two Liquid Instruments Moku phasemeter data streams
 
 The two Moku share a clock, but their data streams are 
 misaligned by a non-integer number of samples

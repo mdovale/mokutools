@@ -1,3 +1,6 @@
+DELIMITER = ', ' # Data delimiter in the CSV files
+NCOLS_PER_CHANNEL = 5 # Number of data columns per phasemeter channel
+
 import numpy as np
 import pandas as pd
 from spectools.lpsd import ltf
