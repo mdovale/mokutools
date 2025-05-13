@@ -5,7 +5,7 @@ import spectools.dsp as dsp
 from mokutools.filetools import *
 import logging
 
-class MokuPhasemeterObject():
+class MokuPhasemeterObject:
     """
     Class for loading, parsing, and analyzing data acquired from a Moku:Pro Phasemeter.
 
@@ -15,7 +15,8 @@ class MokuPhasemeterObject():
 
     Args:
         filename (str): 
-            Path to the `.csv` or `.mat` data file acquired from the Moku Phasemeter.
+            Path to the `.csv` or `.mat` data file acquired from the Moku Phasemeter,
+            or a partial file name when `ip` is provided.
         start_time (float, optional): 
             Start time (in seconds) for loading a subset of the data. Defaults to 0.
         duration (float, optional): 
@@ -26,6 +27,15 @@ class MokuPhasemeterObject():
             List of spectrum types to precompute (e.g., ['phase', 'frequency']).
         logger (logging.Logger, optional): 
             Logger for debug messages. If None, a default logger is used.
+        ip (str, optional): 
+            IP address of the Moku device to download the file from. If provided, `filename`
+            is interpreted as a substring to match on the device.
+        archive (bool): 
+            If True, compress the converted `.csv` file into a `.zip`. Default is True.
+        output_path (str, optional): 
+            Directory where output files will be saved. Defaults to current directory.
+        delete (bool): 
+            If True, delete the `.li` file from the device after processing. Default is False.
         *args, **kwargs: 
             Additional arguments passed to the spectral estimation function (`ltf`).
 
@@ -43,65 +53,116 @@ class MokuPhasemeterObject():
         ps (dict): 
             Dictionary of power spectral density results keyed by 'channel_metric'.
     """
-    def __init__(self, filename, start_time=None, duration=None, prefix=None, spectrums=[], logger=None, *args, **kwargs):
+
+    def __init__(self, filename=None, start_time=None, duration=None, prefix=None, spectrums=[], logger=None,
+                 ip=None, archive=True, output_path=None, delete=False, *args, **kwargs):
 
         if logger is None:
             logger = logging.getLogger(__name__)
 
-        if is_mat_file(filename):
-            logger.debug(f"{filename} is a Matlab file, converting to CSV for further processing...")
-            self.filename = moku_mat_to_csv(filename)
+        # Helper: prompt user for single file selection
+        def get_single_file_choice(files):
+            while True:
+                choice = input("Enter the number of the file to download (Q to quit): ").strip().upper()
+                if choice == 'Q':
+                    return None
+                try:
+                    idx = int(choice)
+                    if 1 <= idx <= len(files):
+                        return files[idx - 1]
+                except ValueError:
+                    pass
+
+        # Handle IP-based file download
+        if ip is not None:
+            if filename is None:
+                raise ValueError("If 'ip' is provided, 'filename' must also be specified.")
+
+            logger.debug(f"Fetching file list from Moku device at {ip}...")
+            files = get_file_list(ip)
+            matches = [f for f in files if filename in f]
+
+            if len(matches) == 0:
+                raise FileNotFoundError(f"No files matching '{filename}' found on device at {ip}.")
+            elif len(matches) == 1:
+                selected_file = matches[0]
+                logger.debug(f"Single match found: {selected_file}")
+            else:
+                display_menu(matches)
+                selected_file = get_single_file_choice(matches)
+                if selected_file is None:
+                    raise RuntimeError("User aborted file selection.")
+
+            logger.debug(f"Downloading selected file: {selected_file}")
+            download_files(
+                ip=ip,
+                file_names=selected_file,
+                convert=True,
+                archive=archive,
+                output_path=output_path,
+                delete=delete
+            )
+
+            base = os.path.basename(selected_file).replace(".li", ".csv")
+            self.filename = os.path.join(output_path or os.getcwd(), base)
         else:
+            if filename is None:
+                raise ValueError("Either 'filename' or both 'ip' and 'filename' must be specified.")
             self.filename = filename
 
-        self.ncols, self.nrows, self.header_rows, self.header = parse_csv_file(self.filename, logger=logger)
+        # Handle .mat file conversion
+        if is_mat_file(self.filename):
+            logger.debug(f"{self.filename} is a Matlab file, converting to CSV for further processing...")
+            self.filename = moku_mat_to_csv(self.filename)
 
+        # Parse header and structure
+        self.ncols, self.nrows, self.header_rows, self.header = parse_csv_file(self.filename, logger=logger)
         self.fs, self.date = parse_header(self.header, logger=logger)
-        
-        self.nchan = (self.ncols-1)//NCOLS_PER_CHANNEL
-        
+        self.nchan = (self.ncols - 1) // NCOLS_PER_CHANNEL
         logger.debug(f"Detected {self.nchan} phasemeter channels")
 
         self.labels = self.data_labels()
 
+        # Time slicing
         self.start_time = start_time if start_time is not None else 0.0
-        self.start_row = int(start_time*self.fs) if start_time is not None else 0
-        self.end_row = self.start_row + int(duration*self.fs) if duration is not None else self.nrows - self.header_rows
+        self.start_row = int(start_time * self.fs) if start_time is not None else 0
+        self.end_row = self.start_row + int(duration * self.fs) if duration is not None else self.nrows - self.header_rows
         self.ndata = self.end_row - self.start_row
-        self.duration = self.ndata/self.fs
+        self.duration = self.ndata / self.fs
+
         logger.debug(f"Attempting to load {self.duration:.2f} s ({self.ndata} rows) starting after {self.start_time:.2f} s (row {self.start_row})")
         logger.debug("Loading data, please wait...")
 
         self.df = pd.read_csv(
-            self.filename, 
-            delimiter=DELIMITER, 
-            skiprows=self.header_rows + self.start_row, 
-            nrows=self.ndata, 
-            names=self.labels, 
+            self.filename,
+            delimiter=DELIMITER,
+            skiprows=self.header_rows + self.start_row,
+            nrows=self.ndata,
+            names=self.labels,
             engine='python'
         )
-        
+
         if len(self.df) != self.ndata:
             self.end_row = len(self.df) - 1
             self.ndata = len(self.df)
-            
+
         self.duration = self.ndata / self.fs
 
         logger.debug(f"    * Moku phasemeter data loaded successfully")
-        logger.debug(f"    * Loaded {self.ndata} rows, {self.duration} seconds")
+        logger.debug(f"    * Loaded {self.ndata} rows, {self.duration:.2f} seconds")
         logger.debug(f"\n{self.df.head()}")
 
+        # Derived quantities
         for i in range(self.nchan):
             self.df[f'{i+1}_phase'] = self.df[f'{i+1}_cycles'] * 2 * np.pi
-
-        for i in range(self.nchan):
             self.df[f'{i+1}_freq2phase'] = dsp.frequency2phase(self.df[f'{i+1}_freq'], self.fs)
 
+        # Optional spectrum computation
         self.ps = {}
-
         if len(spectrums) > 0:
             self.spectrum(spectrums, *args, **kwargs)
 
+        # Optional label prefixing
         if prefix is not None:
             self.df = self.df.add_prefix(prefix)
 
