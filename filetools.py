@@ -7,7 +7,6 @@ import os
 import re
 import shutil
 import zipfile
-import json
 import requests
 import subprocess
 from io import TextIOWrapper
@@ -17,7 +16,6 @@ import tarfile
 import gzip
 from py7zr import SevenZipFile
 import numpy as np
-import pandas as pd
 import logging
 
 SERVER_URL = "http://10.128.100.198/api/ssd"
@@ -46,14 +44,6 @@ def get_file_list(ip):
     response.raise_for_status()
     data = response.json()
     return data.get("data", [])
-
-import os
-import re
-import shutil
-import zipfile
-import json
-import requests
-import subprocess
 
 def download_files(ip, file_names=None, date=None, convert=True, archive=True, output_path=None, delete=False):
     """
@@ -337,7 +327,7 @@ def display_menu(files):
         print(f"{idx + 1}. {file}")
     print("Q. Quit")
 
-def get_user_choice(files):
+def get_two_file_choice(files):
     """
     Get the user's choice of files.
     
@@ -357,5 +347,26 @@ def get_user_choice(files):
             choices = [int(ch) for ch in choice.split()]
             if len(choices) == 2 and all(1 <= ch <= len(files) for ch in choices):
                 return 'F', [files[ch - 1] for ch in choices]
+        except ValueError:
+            pass
+
+def get_single_file_choice(files):
+    """
+    Prompt user to select a single file from a list.
+
+    Args:
+        files (list): list of file name strings.
+
+    Returns:
+        str: filename selected by the user, or None if they quit.
+    """
+    while True:
+        choice = input("Enter the number of the file to download (Q to quit): ").strip().upper()
+        if choice == 'Q':
+            return None
+        try:
+            idx = int(choice)
+            if 1 <= idx <= len(files):
+                return files[idx - 1]
         except ValueError:
             pass

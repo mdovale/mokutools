@@ -95,7 +95,7 @@ def main():
     else:
         while True:
             display_menu(file_list)
-            action, selected_files = get_user_choice(file_list)
+            action, selected_files = get_two_file_choice(file_list)
             
             if action == 'Q':
                 pool.close()
