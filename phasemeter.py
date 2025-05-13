@@ -184,8 +184,9 @@ class MokuPhasemeterObject:
 
         Args:
             which (str or list of str): 
-                Type(s) of data to analyze. Options include 'phase', 'frequency', 'freq2phase'.
-                Can be a string or list of strings.
+                Type(s) of data to analyze. Options include:
+                - 'phase', 'frequency', 'freq2phase' (interpreted per channel)
+                - Or an exact name of a column in self.df
             channels (list or int, optional): 
                 List of integer channel numbers (1-indexed) to analyze. 
                 If empty, all channels are included.
@@ -204,6 +205,12 @@ class MokuPhasemeterObject:
 
         if isinstance(which, str):
             which = [which]
+
+        # Handle single-column case if it exactly matches a column name
+        if len(which) == 1 and which[0] in self.df.columns:
+            col = which[0]
+            self.ps[col] = ltf(self.df[col], fs=self.fs, *args, **kwargs)
+            return
 
         if isinstance(channels, int):
             channels = [channels]
