@@ -47,9 +47,17 @@ def get_file_list(ip):
     data = response.json()
     return data.get("data", [])
 
-def download_files(ip, file_names=None, date=None, convert=True, archive=True):
+import os
+import re
+import shutil
+import zipfile
+import json
+import requests
+import subprocess
+
+def download_files(ip, file_names=None, date=None, convert=True, archive=True, output_path=None):
     """
-    Download `.li` files from a Moku device and optionally converts and compresses them.
+    Download `.li` files from a Moku device and optionally convert and compress them.
 
     Args:
         ip (str): 
@@ -62,7 +70,10 @@ def download_files(ip, file_names=None, date=None, convert=True, archive=True):
         convert (bool):
             If True, convert the `.li` file to `.csv` using `mokucli`. Default is True.
         archive (bool):
-            If True, zip the `.csv` file and move it to `./data`. Default is True.
+            If True, zip the `.csv` file. Only applies if `convert=True`. Default is True.
+        output_path (str, optional):
+            Path to the directory where files should be saved. 
+            If not provided, the current working directory is used.
 
     Returns:
         None
@@ -73,6 +84,7 @@ def download_files(ip, file_names=None, date=None, convert=True, archive=True):
     - Requires `mokucli` to be installed and available in the system PATH if `convert=True`.
     - Either `file_names` or `date` must be specified.
     - If both `convert` and `archive` are False, only the `.li` file will be downloaded.
+    - If `output_path` does not exist, it will be created.
     """
     if convert and not shutil.which("mokucli"):
         print("❌ `mokucli` not found. Please install it from:")
@@ -91,15 +103,15 @@ def download_files(ip, file_names=None, date=None, convert=True, archive=True):
     else:
         raise ValueError("You must provide either `file_names` or `date`.")
 
-    os.makedirs("data", exist_ok=True)
+    output_path = output_path or os.getcwd()
+    os.makedirs(output_path, exist_ok=True)
 
     for filename in files_to_download:
         url = f"http://{ip}/api/ssd/download/{filename}"
         lifile = filename
         csvfile = lifile.replace(".li", ".csv")
-        archive_path = os.path.join("data", f"{csvfile}.zip")
+        archive_name = f"{csvfile}.zip"
 
-        # Step 1: Download the .li file
         print(f"⬇️  Downloading {lifile}...")
         with requests.get(url, stream=True) as r:
             r.raise_for_status()
@@ -107,25 +119,23 @@ def download_files(ip, file_names=None, date=None, convert=True, archive=True):
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
 
-        # Step 2: Convert to .csv if requested
         if convert:
             print(f"🔄 Converting {lifile} to CSV...")
             subprocess.run(["mokucli", "convert", lifile, "--format=csv"], check=True)
 
-            # Step 3: Archive if requested
             if archive:
+                archive_path = os.path.join(output_path, archive_name)
                 print(f"📦 Archiving {csvfile} to {archive_path}...")
                 with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                     zipf.write(csvfile, arcname=os.path.basename(csvfile))
                 os.remove(csvfile)
             else:
-                shutil.move(csvfile, os.path.join("data", csvfile))
+                shutil.move(csvfile, os.path.join(output_path, csvfile))
 
-        # Step 4: Handle .li file
         if convert:
             os.remove(lifile)
         else:
-            shutil.move(lifile, os.path.join("data", lifile))
+            shutil.move(lifile, os.path.join(output_path, lifile))
 
         print(f"✅ Processed: {filename}")
 
