@@ -8,7 +8,7 @@ import requests
 import subprocess
 from io import TextIOWrapper
 import ipywidgets as widgets
-from IPython.display import display
+from IPython.display import display, clear_output
 import scipy.io
 import zipfile
 import tarfile
@@ -159,13 +159,6 @@ def delete_files(ip, file_names=None, delete_all=False):
 
     Returns:
         None
-
-    Notes:
-    ------
-    - Fetches the current list of files using `get_file_list()`.
-    - Files are matched using substring matching.
-    - Prompts the user to confirm before deletion.
-    - DELETE requests are sent to `/api/ssd/delete/<filename>`.
     """
     files = get_file_list(ip)
 
@@ -186,17 +179,13 @@ def delete_files(ip, file_names=None, delete_all=False):
     for f in files_to_delete:
         print(f" - {f}")
 
-    # Create confirmation prompt
-    confirm = widgets.ToggleButtons(
-        options=['No', 'Yes'],
-        description='Proceed?',
-        disabled=False,
-        button_style='warning'
-    )
-    display(confirm)
+    button_yes = widgets.Button(description="Yes, delete", button_style='danger')
+    button_no = widgets.Button(description="No, cancel", button_style='success')
+    output = widgets.Output()
 
-    def on_change(change):
-        if change['new'] == 'Yes':
+    def delete_action(b):
+        with output:
+            clear_output()
             print("🚨 Deleting files...")
             for f in files_to_delete:
                 del_url = f"http://{ip}/api/ssd/delete/{f}"
@@ -205,11 +194,56 @@ def delete_files(ip, file_names=None, delete_all=False):
                     print(f"✅ Deleted: {f}")
                 else:
                     print(f"⚠️ Failed to delete: {f} (status {response.status_code})")
-        else:
-            print("❎ Deletion cancelled.")
-        confirm.close()
 
-    confirm.observe(on_change, names='value')
+    def cancel_action(b):
+        with output:
+            clear_output()
+            print("❎ Deletion cancelled.")
+
+    button_yes.on_click(delete_action)
+    button_no.on_click(cancel_action)
+
+    display(widgets.HBox([button_no, button_yes]))
+    display(output)
+
+def upload_files(ip, files):
+    """
+    Upload one or more files to the Moku device's SSD.
+
+    Args:
+        ip (str):
+            IP address of the device (e.g., '10.128.100.198').
+        files (str or list of str):
+            Path to a local file or list of local file paths to upload.
+
+    Returns:
+        None
+
+    Notes:
+    ------
+    - Uses HTTP POST with the file content as the body.
+    - The upload endpoint is `/api/ssd/upload/<filename>`.
+    - If the filename already exists on the device, it will be overwritten.
+    """
+    if isinstance(files, str):
+        files = [files]
+
+    for file_path in files:
+        if not os.path.isfile(file_path):
+            print(f"❌ File not found: {file_path}")
+            continue
+
+        filename = os.path.basename(file_path)
+        url = f"http://{ip}/api/ssd/upload/{filename}"
+
+        print(f"📤 Uploading {filename} to {ip}...")
+        with open(file_path, 'rb') as f:
+            response = requests.post(url, data=f)
+
+        if response.status_code == 200:
+            print(f"✅ Uploaded: {filename}")
+        else:
+            print(f"⚠️ Failed to upload {filename} (status {response.status_code})")
 
 def read_lines(filename, num_lines):
     """
