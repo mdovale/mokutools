@@ -3,6 +3,13 @@ NCOLS_PER_CHANNEL = 5 # Number of data columns per phasemeter channel
 
 import sys
 import csv
+import os
+import re
+import shutil
+import zipfile
+import json
+import requests
+import subprocess
 from io import TextIOWrapper
 import scipy.io
 import zipfile
@@ -12,6 +19,115 @@ from py7zr import SevenZipFile
 import numpy as np
 import pandas as pd
 import logging
+
+SERVER_URL = "http://10.128.100.198/api/ssd"
+DATA_DIR = "./data"
+
+def get_file_list(ip):
+    """
+    Fetch the list of files available from the Moku server at the specified IP address.
+
+    Args:
+        ip (str): IP address of the device (e.g., '10.128.100.198').
+
+    Returns:
+        list: List of filenames available from the server.
+
+    Notes:
+    ------
+    - The function sends a GET request to `http://<ip>/api/ssd/list` and parses 
+      the JSON response.
+    - If the request fails or the response format is incorrect, the function may 
+      raise an exception.
+    - It is assumed that the response contains a `data` field holding the file list.
+    """
+    url = f"http://{ip}/api/ssd/list"
+    response = requests.get(url)
+    response.raise_for_status()
+    data = response.json()
+    return data.get("data", [])
+
+def download_files(ip, file_names=None, date=None, convert=True, archive=True):
+    """
+    Download `.li` files from a Moku device and optionally converts and compresses them.
+
+    Args:
+        ip (str): 
+            IP address of the device (e.g., '10.128.100.198').
+        file_names (str or list of str, optional): 
+            Specific filename or list of filenames to download. 
+            If provided, the `date` argument is ignored.
+        date (str, optional): 
+            A date string in 'YYYYMMDD' format to filter filenames.
+        convert (bool):
+            If True, convert the `.li` file to `.csv` using `mokucli`. Default is True.
+        archive (bool):
+            If True, zip the `.csv` file and move it to `./data`. Default is True.
+
+    Returns:
+        None
+            Downloads and optionally processes files, but does not return a value.
+
+    Notes:
+    ------
+    - Requires `mokucli` to be installed and available in the system PATH if `convert=True`.
+    - Either `file_names` or `date` must be specified.
+    - If both `convert` and `archive` are False, only the `.li` file will be downloaded.
+    """
+    if convert and not shutil.which("mokucli"):
+        print("❌ `mokucli` not found. Please install it from:")
+        print("   https://liquidinstruments.com/software/utilities/")
+        return
+
+    files = get_file_list(ip)
+
+    if file_names:
+        if isinstance(file_names, str):
+            file_names = [file_names]
+        files_to_download = [f for f in files if f in file_names]
+    elif date:
+        pattern = re.compile(rf"{date}")
+        files_to_download = [f for f in files if pattern.search(f)]
+    else:
+        raise ValueError("You must provide either `file_names` or `date`.")
+
+    os.makedirs("data", exist_ok=True)
+
+    for filename in files_to_download:
+        url = f"http://{ip}/api/ssd/download/{filename}"
+        lifile = filename
+        csvfile = lifile.replace(".li", ".csv")
+        archive_path = os.path.join("data", f"{csvfile}.zip")
+
+        # Step 1: Download the .li file
+        print(f"⬇️  Downloading {lifile}...")
+        with requests.get(url, stream=True) as r:
+            r.raise_for_status()
+            with open(lifile, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+        # Step 2: Convert to .csv if requested
+        if convert:
+            print(f"🔄 Converting {lifile} to CSV...")
+            subprocess.run(["mokucli", "convert", lifile, "--format=csv"], check=True)
+
+            # Step 3: Archive if requested
+            if archive:
+                print(f"📦 Archiving {csvfile} to {archive_path}...")
+                with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    zipf.write(csvfile, arcname=os.path.basename(csvfile))
+                os.remove(csvfile)
+            else:
+                shutil.move(csvfile, os.path.join("data", csvfile))
+
+        # Step 4: Handle .li file
+        if convert:
+            os.remove(lifile)
+        else:
+            shutil.move(lifile, os.path.join("data", lifile))
+
+        print(f"✅ Processed: {filename}")
 
 def read_lines(filename, num_lines):
     """
@@ -163,7 +279,6 @@ def parse_csv_file(filename, delimiter=None, logger=None):
 
     logger.debug(f"File contains {num_rows} total rows, {num_header_rows} header rows, and {num_cols} columns")
     return num_cols, num_rows, num_header_rows, header
-
 
 def parse_moku_phasemeter_header(file_header, row_fs=None, row_t0=None, fs_hint="rate", t0_hint="Acquired", logger=None):
     """
