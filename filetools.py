@@ -10,6 +10,8 @@ import zipfile
 import requests
 import subprocess
 from io import TextIOWrapper
+import ipywidgets as widgets
+from IPython.display import display
 import scipy.io
 import zipfile
 import tarfile
@@ -370,3 +372,17 @@ def get_single_file_choice(files):
                 return files[idx - 1]
         except ValueError:
             pass
+
+def select_file_widget(files):
+    """
+    Display a dropdown widget for selecting a file and return the widget.
+    The user is expected to read `.value` after selection.
+    """
+    dropdown = widgets.Dropdown(
+        options=files,
+        description='Select file:',
+        layout=widgets.Layout(width='100%'),
+        style={'description_width': 'initial'}
+    )
+    display(dropdown)
+    return dropdown
