@@ -55,36 +55,37 @@ import json
 import requests
 import subprocess
 
-def download_files(ip, file_names=None, date=None, convert=True, archive=True, output_path=None):
+def download_files(ip, file_names=None, date=None, convert=True, archive=True, output_path=None, delete=False):
     """
-    Download `.li` files from a Moku device and optionally convert and compress them.
+    Download `.li` files from a Moku device and optionally convert, compress, and delete them.
 
     Args:
         ip (str): 
             IP address of the device (e.g., '10.128.100.198').
         file_names (str or list of str, optional): 
-            Specific filename or list of filenames to download. 
+            Partial filename or list of partial strings to match files.
             If provided, the `date` argument is ignored.
         date (str, optional): 
             A date string in 'YYYYMMDD' format to filter filenames.
-        convert (bool):
+        convert (bool): 
             If True, convert the `.li` file to `.csv` using `mokucli`. Default is True.
-        archive (bool):
-            If True, zip the `.csv` file. Only applies if `convert=True`. Default is True.
-        output_path (str, optional):
-            Path to the directory where files should be saved. 
-            If not provided, the current working directory is used.
+        archive (bool): 
+            If True, zip the `.csv` file. Applies only if `convert=True`. Default is True.
+        output_path (str, optional): 
+            Directory where output files will be saved. Defaults to current directory.
+        delete (bool): 
+            If True, delete the `.li` file from the device after processing. Default is False.
 
     Returns:
         None
-            Downloads and optionally processes files, but does not return a value.
+            This function processes files as described but returns no value.
 
     Notes:
     ------
     - Requires `mokucli` to be installed and available in the system PATH if `convert=True`.
     - Either `file_names` or `date` must be specified.
-    - If both `convert` and `archive` are False, only the `.li` file will be downloaded.
-    - If `output_path` does not exist, it will be created.
+    - Files are matched by substring (partial matching supported).
+    - The device API must support `DELETE` requests to `/api/ssd/delete/<filename>`.
     """
     if convert and not shutil.which("mokucli"):
         print("❌ `mokucli` not found. Please install it from:")
@@ -96,12 +97,19 @@ def download_files(ip, file_names=None, date=None, convert=True, archive=True, o
     if file_names:
         if isinstance(file_names, str):
             file_names = [file_names]
-        files_to_download = [f for f in files if f in file_names]
+        files_to_download = [
+            f for f in files
+            if any(pat in f for pat in file_names)
+        ]
     elif date:
         pattern = re.compile(rf"{date}")
         files_to_download = [f for f in files if pattern.search(f)]
     else:
         raise ValueError("You must provide either `file_names` or `date`.")
+
+    if not files_to_download:
+        print("⚠️ No matching files found.")
+        return
 
     output_path = output_path or os.getcwd()
     os.makedirs(output_path, exist_ok=True)
@@ -137,7 +145,16 @@ def download_files(ip, file_names=None, date=None, convert=True, archive=True, o
         else:
             shutil.move(lifile, os.path.join(output_path, lifile))
 
-        print(f"✅ Processed: {filename}")
+        if delete:
+            print(f"🗑️  Deleting {filename} from device...")
+            del_url = f"http://{ip}/api/ssd/delete/{filename}"
+            response = requests.delete(del_url)
+            if response.status_code == 200:
+                print(f"✅ Deleted: {filename}")
+            else:
+                print(f"⚠️  Failed to delete: {filename} (status {response.status_code})")
+
+        print(f"✅ Finished processing: {filename}")
 
 def read_lines(filename, num_lines):
     """
