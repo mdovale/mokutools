@@ -10,10 +10,13 @@ import logging
 
 import os
 import logging
+import subprocess
 import numpy as np
 import pandas as pd
 import ipywidgets as widgets
 from IPython.display import display
+import zipfile
+
 
 class MokuPhasemeterObject:
     """
@@ -40,11 +43,13 @@ class MokuPhasemeterObject:
         ip (str, optional): 
             IP address of the Moku device to download the file from. If provided, `filename`
             is interpreted as a substring to match on the device.
-        archive (bool): 
-            If True, compress the converted `.csv` file into a `.zip`. Default is True.
         output_path (str, optional): 
             Directory where output files will be saved. Defaults to current directory.
-        delete (bool): 
+        archive_file (bool): 
+            If True, compress the converted `.csv` file into a `.zip`. Default is False.
+        delete_original (bool): 
+            If True, delete the original `.li` or `.mat` file. Default is False.
+        remove_from_server (bool): 
             If True, delete the `.li` file from the device after processing. Default is False.
         *args, **kwargs: 
             Additional arguments passed to the spectral estimation function (`ltf`).
@@ -65,12 +70,12 @@ class MokuPhasemeterObject:
     """
 
     def __init__(self, filename=None, start_time=None, duration=None, prefix=None, spectrums=[], logger=None,
-                 ip=None, archive=True, output_path=None, delete=False, *args, **kwargs):
+                 ip=None, output_path=None, archive_file=False, delete_original=False, remove_from_server=False, *args, **kwargs):
 
         if logger is None:
             logger = logging.getLogger(__name__)
 
-        # Handle IP-based file download
+        # Handle file download from a Moku server
         if ip is not None:
             if filename is None:
                 raise ValueError("If 'ip' is provided, 'filename' must also be specified.")
@@ -92,27 +97,49 @@ class MokuPhasemeterObject:
             download_files(
                 ip=ip,
                 file_names=selected_file,
-                convert=True,
-                archive=archive,
+                convert=False,
                 output_path=output_path,
-                delete=delete
+                remove_from_server=remove_from_server
             )
-            if archive:
-                base = os.path.basename(selected_file).replace(".li", ".csv.zip")
-            else:
-                base = os.path.basename(selected_file).replace(".li", ".csv")
-            self.filename = os.path.join(output_path or os.getcwd(), base)
+            self.filename = os.path.join(output_path or os.getcwd(), os.path.basename(selected_file))
+            is_downloaded_file = True
         else:
             if filename is None:
                 raise ValueError("Either 'filename' or both 'ip' and 'filename' must be specified.")
             self.filename = filename
+            is_downloaded_file = False
 
-        # Handle .mat file conversion
+        # Handle file conversions to CSV
+        is_converted_file = False
+
         if is_mat_file(self.filename):
+            original_file = self.filename
+            is_converted_file = True
             logger.debug(f"{self.filename} is a Matlab file, converting to CSV for further processing...")
             self.filename = moku_mat_to_csv(self.filename)
 
-        # Parse header and structure
+        elif is_li_file(self.filename):
+            original_file = self.filename
+            is_converted_file = True
+            logger.debug(f"{self.filename} is a Liquid:Instruments binary file, converting to CSV for further processing...")
+            subprocess.run(["mokucli", "convert", self.filename, "--format=csv"], check=True)
+            self.filename = os.path.splitext(self.filename)[0] + ".csv"
+
+        # Archive the converted file if requested
+        if is_converted_file and archive_file:
+            zip_path = self.filename + ".zip"
+            logger.debug(f"Archiving {self.filename} to {zip_path}")
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                zipf.write(self.filename, arcname=os.path.basename(self.filename))
+            os.remove(self.filename)  # Delete original CSV
+            self.filename = zip_path
+
+        # Delete the original file if requested
+        if is_converted_file and delete_original:
+            logger.debug(f"Removing {original_file}")
+            os.remove(original_file)
+
+        # Parse header and structure of CSV file
         self.ncols, self.nrows, self.header_rows, self.header = parse_csv_file(self.filename, logger=logger)
         self.fs, self.date = parse_header(self.header, logger=logger)
         self.nchan = (self.ncols - 1) // NCOLS_PER_CHANNEL
@@ -138,6 +165,9 @@ class MokuPhasemeterObject:
             names=self.labels,
             engine='python'
         )
+        if (is_converted_file) and (not archive_file):
+            # If the file has been converted from an original and not archived, delete it
+            os.remove(self.filename)
 
         if len(self.df) != self.ndata:
             self.end_row = len(self.df) - 1

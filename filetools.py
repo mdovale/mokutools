@@ -44,7 +44,7 @@ def get_file_list(ip):
     data = response.json()
     return data.get("data", [])
 
-def download_files(ip, file_names=None, date=None, convert=True, archive=True, output_path=None, delete=False):
+def download_files(ip, file_names=None, date=None, convert=True, archive=True, output_path=None, remove_from_server=False):
     """
     Download `.li` files from a Moku device and optionally convert, compress, and delete them.
 
@@ -62,7 +62,7 @@ def download_files(ip, file_names=None, date=None, convert=True, archive=True, o
             If True, zip the `.csv` file. Applies only if `convert=True`. Default is True.
         output_path (str, optional): 
             Directory where output files will be saved. Defaults to current directory.
-        delete (bool): 
+        remove_from_server (bool): 
             If True, delete the `.li` file from the device after processing. Default is False.
 
     Returns:
@@ -134,7 +134,7 @@ def download_files(ip, file_names=None, date=None, convert=True, archive=True, o
         else:
             shutil.move(lifile, os.path.join(output_path, lifile))
 
-        if delete:
+        if remove_from_server:
             print(f"🗑️  Deleting {filename} from device...")
             del_url = f"http://{ip}/api/ssd/delete/{filename}"
             response = requests.delete(del_url)
@@ -275,6 +275,16 @@ def is_mat_file(file_path):
         scipy.io.whosmat(file_path)  # Try reading variable names in the file
         return True
     except:
+        return False
+    
+def is_li_file(file_path):
+    """Check if a file is a Liquid Instruments .li file by reading the header."""
+    try:
+        with open(file_path, 'rb') as f:
+            header = f.read(8)  # Read first few bytes; adjust as needed
+            # Example check: file starts with ASCII 'LI' or a known binary signature
+            return header.startswith(b'LI')  # Adjust condition based on actual file format
+    except Exception:
         return False
 
 def moku_mat_to_csv(mat_file, out_file=None):
