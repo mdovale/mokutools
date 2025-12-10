@@ -20,18 +20,28 @@ import logging
 SERVER_URL = "http://10.128.100.198/api/ssd"
 DATA_DIR = "./data"
 
-def get_file_list(ip):
+import requests
+
+def get_file_list(ip: str, filter = None):
     """
-    Fetch the list of files available from the Moku server at the specified IP address.
+    Fetch the list of files available from the Moku server at the specified IP address,
+    optionally filtering the filenames by a list of substrings (case-insensitive, AND logic).
 
-    Args:
-        ip (str): IP address of the device (e.g., '10.128.100.198').
+    Parameters
+    ----------
+    ip : str
+        IP address of the device (e.g., '10.128.100.198').
+    filter : list of str, optional
+        List of substrings to filter filenames by. Only filenames containing
+        all the substrings (case-insensitive) will be returned.
 
-    Returns:
-        list: List of filenames available from the server.
+    Returns
+    -------
+    list of str
+        List of filenames available from the server, filtered if `filter` is given.
 
-    Notes:
-    ------
+    Notes
+    -----
     - The function sends a GET request to `http://<ip>/api/ssd/list` and parses 
       the JSON response.
     - If the request fails or the response format is incorrect, the function may 
@@ -42,7 +52,16 @@ def get_file_list(ip):
     response = requests.get(url)
     response.raise_for_status()
     data = response.json()
-    return data.get("data", [])
+    file_list = data.get("data", [])
+
+    if filter:
+        lower_filter = [s.lower() for s in filter]
+        file_list = [
+            fname for fname in file_list
+            if all(sub in fname.lower() for sub in lower_filter)
+        ]
+
+    return file_list
 
 def download_files(ip, file_names=None, date=None, convert=True, archive=True, output_path=None, remove_from_server=False):
     """
