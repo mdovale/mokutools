@@ -38,8 +38,8 @@ NCOLS_PER_CHANNEL = 5 # Number of data columns per phasemeter channel
 
 import numpy as np
 import pandas as pd
-from spectools.lpsd import ltf
-import spectools.dsp as dsp
+from speckit import compute_spectrum as ltf
+import speckit.dsp as dsp
 from mokutools.filetools import *
 import logging
 
