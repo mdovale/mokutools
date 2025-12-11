@@ -167,6 +167,7 @@ class TestDownloadFiles:
         mock_which,
     ):
         """Test file download with conversion and archiving."""
+        import os
         mock_which.return_value = "/usr/bin/mokucli"
         mock_get_file_list.return_value = ["test_file.li"]
         
@@ -177,6 +178,14 @@ class TestDownloadFiles:
         mock_get.return_value.__enter__.return_value = mock_response
         mock_get.return_value.__exit__ = Mock(return_value=None)
 
+        # Create CSV file after subprocess.run is called (simulating mokucli conversion)
+        from pathlib import Path
+        def create_csv_file(*args, **kwargs):
+            # Create the CSV file that would be created by mokucli
+            Path("test_file.csv").write_text("col1,col2\n1,2\n")
+        
+        mock_subprocess.side_effect = create_csv_file
+
         # Mock zipfile
         mock_zip = MagicMock()
         mock_zipfile.return_value.__enter__.return_value = mock_zip
@@ -184,9 +193,13 @@ class TestDownloadFiles:
 
         download_files("10.128.100.198", file_names="test", convert=True, archive=True)
 
-        mock_subprocess.run.assert_called_once()
+        mock_subprocess.assert_called_once()
         mock_zipfile.assert_called_once()
         mock_remove.assert_called()
+        
+        # Clean up
+        if os.path.exists("test_file.csv"):
+            os.remove("test_file.csv")
 
     @patch('mokutools.filetools.shutil.which')
     @patch('mokutools.filetools.get_file_list')
@@ -247,6 +260,7 @@ class TestDownloadFiles:
     @patch('mokutools.filetools.requests.get')
     @patch('mokutools.filetools.requests.delete')
     @patch('mokutools.filetools.subprocess.run')
+    @patch('mokutools.filetools.zipfile.ZipFile')
     @patch('mokutools.filetools.os.makedirs')
     @patch('mokutools.filetools.os.remove')
     @patch('mokutools.filetools.shutil.move')
@@ -257,6 +271,7 @@ class TestDownloadFiles:
         mock_move,
         mock_remove,
         mock_makedirs,
+        mock_zipfile,
         mock_subprocess,
         mock_delete,
         mock_get,
@@ -264,6 +279,7 @@ class TestDownloadFiles:
         mock_which,
     ):
         """Test download_files with remove_from_server=True."""
+        import os
         mock_which.return_value = "/usr/bin/mokucli"
         mock_get_file_list.return_value = ["test_file.li"]
         
@@ -278,15 +294,33 @@ class TestDownloadFiles:
         mock_delete_response.status_code = 200
         mock_delete.return_value = mock_delete_response
 
+        # Create CSV file after subprocess.run is called (simulating mokucli conversion)
+        from pathlib import Path
+        def create_csv_file(*args, **kwargs):
+            # Create the CSV file that would be created by mokucli
+            Path("test_file.csv").write_text("col1,col2\n1,2\n")
+        
+        mock_subprocess.side_effect = create_csv_file
+
+        # Mock zipfile
+        mock_zip = MagicMock()
+        mock_zipfile.return_value.__enter__.return_value = mock_zip
+        mock_zipfile.return_value.__exit__ = Mock(return_value=None)
+
         with patch('builtins.print'):
             download_files(
                 "10.128.100.198",
                 file_names="test",
                 convert=True,
+                archive=True,
                 remove_from_server=True
             )
 
         mock_delete.assert_called_once_with("http://10.128.100.198/api/ssd/delete/test_file.li")
+        
+        # Clean up
+        if os.path.exists("test_file.csv"):
+            os.remove("test_file.csv")
 
 
 class TestParseCsvFile:

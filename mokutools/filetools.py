@@ -48,6 +48,7 @@ import scipy.io
 import zipfile
 import tarfile
 import gzip
+import tempfile
 from py7zr import SevenZipFile
 import numpy as np
 import logging
@@ -408,8 +409,11 @@ def parse_csv_file(filename, delimiter=None, logger=None):
         elif path.endswith('.7z'):
             with SevenZipFile(path, 'r') as seven_zip_ref:
                 first_file_name = seven_zip_ref.getnames()[0]
-                with seven_zip_ref.open(first_file_name) as f:
-                    return process_stream(f)
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    seven_zip_ref.extract(path=temp_dir, targets=[first_file_name])
+                    extracted_file = os.path.join(temp_dir, first_file_name)
+                    with open(extracted_file, 'rb') as f:
+                        return process_stream(f)
         else:
             with open(path, 'r', encoding='utf-8') as f:
                 return process_stream(f)
