@@ -1,21 +1,21 @@
 # BSD 3-Clause License
-
+#
 # Copyright (c) 2025, Miguel Dovale
-
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-
+#
 # 1. Redistributions of source code must retain the above copyright notice, this
 #    list of conditions and the following disclaimer.
-
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 #    this list of conditions and the following disclaimer in the documentation
 #    and/or other materials provided with the distribution.
-
+#
 # 3. Neither the name of the copyright holder nor the names of its
 #    contributors may be used to endorse or promote products derived from
 #    this software without specific prior written permission.
-
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -27,42 +27,55 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# This software may be subject to U.S. export control laws. By accepting this
-# software, the user agrees to comply with all applicable U.S. export laws and
-# regulations. User has the responsibility to obtain export licenses, or other
-# export authority as may be required before exporting such information to
-# foreign countries or providing access to foreign persons.
-#
-import sys
-import csv
-import os
-import re
-import shutil
-import zipfile
-import requests
-import subprocess
-from io import TextIOWrapper
-import ipywidgets as widgets
-from IPython.display import display, clear_output
-import scipy.io
-import zipfile
-import tarfile
-import gzip
-import tempfile
-from py7zr import SevenZipFile
-import numpy as np
-import logging
+"""
+Backward-compatible wrapper for mokutools.filetools.
 
+This module maintains the old API while delegating to the new moku_io modules.
+For new code, prefer using mokutools.moku_io directly.
+"""
+
+import sys
+import warnings
+from typing import List, Optional, Union
+
+# Import core functions
+from mokutools.moku_io.core import (
+    list_files,
+    download_and_convert,
+    upload,
+    delete,
+    parse_csv_file,
+    is_mat_file,
+    is_li_file,
+    read_lines,
+    get_columns_with_nans,
+)
+
+# Import CLI helpers
+from mokutools.moku_io.cli import (
+    display_menu,
+    get_two_file_choice,
+    get_single_file_choice,
+)
+
+# Import notebook widgets
+from mokutools.moku_io.notebook import (
+    select_file_widget,
+)
+
+# Legacy constants (kept for backward compatibility)
 SERVER_URL = "http://10.128.100.198/api/ssd"
 DATA_DIR = "./data"
 
-import requests
 
-def get_file_list(ip: str, filter = None):
+# Backward-compatible function wrappers
+def get_file_list(ip: str, filter: Optional[List[str]] = None):
     """
-    Fetch the list of files available from the Moku server at the specified IP address,
-    optionally filtering the filenames by a list of substrings (case-insensitive, AND logic).
-
+    Fetch the list of files available from the Moku server.
+    
+    .. deprecated:: 1.0.0
+        Use :func:`mokutools.moku_io.core.list_files` instead.
+    
     Parameters
     ----------
     ip : str
@@ -75,442 +88,191 @@ def get_file_list(ip: str, filter = None):
     -------
     list of str
         List of filenames available from the server, filtered if `filter` is given.
-
-    Notes
-    -----
-    - The function sends a GET request to `http://<ip>/api/ssd/list` and parses 
-      the JSON response.
-    - If the request fails or the response format is incorrect, the function may 
-      raise an exception.
-    - It is assumed that the response contains a `data` field holding the file list.
     """
-    url = f"http://{ip}/api/ssd/list"
-    response = requests.get(url)
-    response.raise_for_status()
-    data = response.json()
-    file_list = data.get("data", [])
+    warnings.warn(
+        "get_file_list is deprecated. Use mokutools.moku_io.core.list_files instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return list_files(ip, filters=filter)
 
-    if filter:
-        lower_filter = [s.lower() for s in filter]
-        file_list = [
-            fname for fname in file_list
-            if all(sub in fname.lower() for sub in lower_filter)
-        ]
 
-    return file_list
-
-def download_files(ip, file_names=None, date=None, convert=True, archive=True, output_path=None, remove_from_server=False):
+def download_files(
+    ip: str,
+    file_names: Optional[Union[str, List[str]]] = None,
+    date: Optional[str] = None,
+    convert: bool = True,
+    archive: bool = True,
+    output_path: Optional[str] = None,
+    remove_from_server: bool = False,
+) -> None:
     """
     Download `.li` files from a Moku device and optionally convert, compress, and delete them.
+    
+    .. deprecated:: 1.0.0
+        Use :func:`mokutools.moku_io.core.download_and_convert` for programmatic use,
+        or :func:`mokutools.moku_io.cli.download_files_interactive` for CLI use.
 
-    Args:
-        ip (str): 
-            IP address of the device (e.g., '10.128.100.198').
-        file_names (str or list of str, optional): 
-            Partial filename or list of partial strings to match files.
-            If provided, the `date` argument is ignored.
-        date (str, optional): 
-            A date string in 'YYYYMMDD' format to filter filenames.
-        convert (bool): 
-            If True, convert the `.li` file to `.csv` using `mokucli`. Default is True.
-        archive (bool): 
-            If True, zip the `.csv` file. Applies only if `convert=True`. Default is True.
-        output_path (str, optional): 
-            Directory where output files will be saved. Defaults to current directory.
-        remove_from_server (bool): 
-            If True, delete the `.li` file from the device after processing. Default is False.
+    Parameters
+    ----------
+    ip : str
+        IP address of the device (e.g., '10.128.100.198').
+    file_names : str or list of str, optional
+        Partial filename or list of partial strings to match files.
+        If provided, the `date` argument is ignored.
+    date : str, optional
+        A date string in 'YYYYMMDD' format to filter filenames.
+    convert : bool, default True
+        If True, convert the `.li` file to `.csv` using `mokucli`.
+    archive : bool, default True
+        If True, zip the `.csv` file. Applies only if `convert=True`.
+    output_path : str, optional
+        Directory where output files will be saved. Defaults to current directory.
+    remove_from_server : bool, default False
+        If True, delete the `.li` file from the device after processing.
 
-    Returns:
-        None
-            This function processes files as described but returns no value.
-
-    Notes:
-    ------
-    - Requires `mokucli` to be installed and available in the system PATH if `convert=True`.
-    - Either `file_names` or `date` must be specified.
-    - Files are matched by substring (partial matching supported).
-    - The device API must support `DELETE` requests to `/api/ssd/delete/<filename>`.
+    Returns
+    -------
+    None
+        This function processes files as described but returns no value.
     """
-    if convert and not shutil.which("mokucli"):
-        print("❌ `mokucli` not found. Please install it from:")
-        print("   https://liquidinstruments.com/software/utilities/")
-        return
-
-    files = get_file_list(ip)
-
-    if file_names:
-        if isinstance(file_names, str):
-            file_names = [file_names]
-        files_to_download = [
-            f for f in files
-            if any(pat in f for pat in file_names)
-        ]
-    elif date:
-        pattern = re.compile(rf"{date}")
-        files_to_download = [f for f in files if pattern.search(f)]
-    else:
-        raise ValueError("You must provide either `file_names` or `date`.")
-
-    if not files_to_download:
-        print("⚠️ No matching files found.")
-        return
-
-    output_path = output_path or os.getcwd()
-    os.makedirs(output_path, exist_ok=True)
-
-    for filename in files_to_download:
-        url = f"http://{ip}/api/ssd/download/{filename}"
-        lifile = filename
-        csvfile = lifile.replace(".li", ".csv")
-        archive_name = f"{csvfile}.zip"
-
-        print(f"⬇️  Downloading {lifile}...")
-        with requests.get(url, stream=True) as r:
-            r.raise_for_status()
-            with open(lifile, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-
-        if convert:
-            print(f"🔄 Converting {lifile} to CSV...")
-            subprocess.run(["mokucli", "convert", lifile, "--format=csv"], check=True)
-
-            if archive:
-                archive_path = os.path.join(output_path, archive_name)
-                print(f"📦 Archiving {csvfile} to {archive_path}...")
-                with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    zipf.write(csvfile, arcname=os.path.basename(csvfile))
-                os.remove(csvfile)
-            else:
-                shutil.move(csvfile, os.path.join(output_path, csvfile))
-
-        if convert:
-            os.remove(lifile)
+    warnings.warn(
+        "download_files is deprecated. Use mokutools.moku_io.core.download_and_convert "
+        "or mokutools.moku_io.cli.download_files_interactive instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
+    try:
+        patterns = file_names if file_names else None
+        processed = download_and_convert(
+            ip=ip,
+            patterns=patterns,
+            date=date,
+            convert=convert,
+            archive=archive,
+            output_path=output_path,
+            remove_from_server=remove_from_server,
+        )
+        
+        if not processed:
+            print("⚠️ No matching files found.")
         else:
-            shutil.move(lifile, os.path.join(output_path, lifile))
+            for filename in processed:
+                print(f"✅ Finished processing: {filename}")
+    except ValueError as e:
+        # Re-raise validation errors (like missing file_names/date)
+        # but handle mokucli not found specially
+        if "mokucli not found" in str(e):
+            print("❌ `mokucli` not found. Please install it from:")
+            print("   https://liquidinstruments.com/software/utilities/")
+        else:
+            # Re-raise validation errors to maintain backward compatibility
+            raise
+    except Exception as e:
+        print(f"❌ Error processing files: {e}")
 
-        if remove_from_server:
-            print(f"🗑️  Deleting {filename} from device...")
-            del_url = f"http://{ip}/api/ssd/delete/{filename}"
-            response = requests.delete(del_url)
-            if response.status_code == 200:
-                print(f"✅ Deleted: {filename}")
-            else:
-                print(f"⚠️  Failed to delete: {filename} (status {response.status_code})")
 
-        print(f"✅ Finished processing: {filename}")
-
-def delete_files(ip, file_names=None, delete_all=False):
+def delete_files(
+    ip: str,
+    file_names: Optional[Union[str, List[str]]] = None,
+    delete_all: bool = False,
+) -> None:
     """
     Delete files from a Moku device, optionally by partial match, full list, or all files.
+    
+    .. deprecated:: 1.0.0
+        Use :func:`mokutools.moku_io.notebook.delete_files_widget` for notebook use,
+        or :func:`mokutools.moku_io.cli.delete_files_interactive` for CLI use.
 
-    Args:
-        ip (str): 
-            IP address of the device (e.g., '10.128.100.198').
-        file_names (str or list of str, optional): 
-            Partial filename string or list of substrings to match files. Ignored if `delete_all` is True.
-        delete_all (bool): 
-            If True, delete all files on the device. Overrides `file_names`.
+    Parameters
+    ----------
+    ip : str
+        IP address of the device (e.g., '10.128.100.198').
+    file_names : str or list of str, optional
+        Partial filename string or list of substrings to match files. Ignored if `delete_all` is True.
+    delete_all : bool, default False
+        If True, delete all files on the device. Overrides `file_names`.
 
-    Returns:
-        None
+    Returns
+    -------
+    None
     """
-    files = get_file_list(ip)
+    warnings.warn(
+        "delete_files is deprecated. Use mokutools.moku_io.notebook.delete_files_widget "
+        "or mokutools.moku_io.cli.delete_files_interactive instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
+    # Use notebook widget version for backward compatibility
+    from mokutools.moku_io.notebook import delete_files_widget
+    delete_files_widget(ip, file_names=file_names, delete_all=delete_all)
 
-    if delete_all:
-        files_to_delete = files
-    elif file_names:
-        if isinstance(file_names, str):
-            file_names = [file_names]
-        files_to_delete = [f for f in files if any(pat in f for pat in file_names)]
-    else:
-        raise ValueError("Must specify `file_names` or set `delete_all=True`.")
 
-    if not files_to_delete:
-        print("⚠️ No matching files found for deletion.")
-        return
-
-    print("📋 The following files will be deleted:")
-    for f in files_to_delete:
-        print(f" - {f}")
-
-    button_yes = widgets.Button(description="Yes, delete", button_style='danger')
-    button_no = widgets.Button(description="No, cancel", button_style='success')
-    output = widgets.Output()
-
-    def delete_action(b):
-        with output:
-            clear_output()
-            print("🚨 Deleting files...")
-            for f in files_to_delete:
-                del_url = f"http://{ip}/api/ssd/delete/{f}"
-                response = requests.delete(del_url)
-                if response.status_code == 200:
-                    print(f"✅ Deleted: {f}")
-                else:
-                    print(f"⚠️ Failed to delete: {f} (status {response.status_code})")
-
-    def cancel_action(b):
-        with output:
-            clear_output()
-            print("❎ Deletion cancelled.")
-
-    button_yes.on_click(delete_action)
-    button_no.on_click(cancel_action)
-
-    display(widgets.HBox([button_no, button_yes]))
-    display(output)
-
-def upload_files(ip, files):
+def upload_files(ip: str, files: Union[str, List[str]]) -> None:
     """
     Upload one or more files to the Moku device's SSD.
-
-    Args:
-        ip (str):
-            IP address of the device (e.g., '10.128.100.198').
-        files (str or list of str):
-            Path to a local file or list of local file paths to upload.
-
-    Returns:
-        None
-
-    Notes:
-    ------
-    - Uses HTTP POST with the file content as the body.
-    - The upload endpoint is `/api/ssd/upload/<filename>`.
-    - If the filename already exists on the device, it will be overwritten.
-    """
-    if isinstance(files, str):
-        files = [files]
-
-    for file_path in files:
-        if not os.path.isfile(file_path):
-            print(f"❌ File not found: {file_path}")
-            continue
-
-        filename = os.path.basename(file_path)
-        url = f"http://{ip}/api/ssd/upload/{filename}"
-
-        print(f"📤 Uploading {filename} to {ip}...")
-        with open(file_path, 'rb') as f:
-            response = requests.post(url, data=f)
-
-        if response.status_code == 200:
-            print(f"✅ Uploaded: {filename}")
-        else:
-            print(f"⚠️ Failed to upload {filename} (status {response.status_code})")
-
-def read_lines(filename, num_lines):
-    """
-    Read from file, return a number of lines as list.
-
-    Args:
-        filename (string): location of the file
-        num_lines (int): number of lines to read from the file
-
-    Returns:
-        lines (list): list of strings with `num_lines` lines from file
-    """
-    lines = []
-    try:
-        with open(filename, 'r', encoding='utf-8') as file:
-            for _ in range(num_lines):
-                line = file.readline()
-                if not line:
-                    break
-                lines.append(line.strip())
-        return lines
-    except Exception as e:
-        print(f"read_lines error: {e}")
-        sys.exit(1)
-
-def is_mat_file(file_path):
-    """Check if a file is a MATLAB .mat file by attempting to read its contents."""
-    try:
-        scipy.io.whosmat(file_path)  # Try reading variable names in the file
-        return True
-    except:
-        return False
     
-def is_li_file(file_path):
-    """Check if a file is a Liquid Instruments .li file by reading the header."""
-    try:
-        with open(file_path, 'rb') as f:
-            header = f.read(8)  # Read first few bytes; adjust as needed
-            # Example check: file starts with ASCII 'LI' or a known binary signature
-            return header.startswith(b'LI')  # Adjust condition based on actual file format
-    except Exception:
-        return False
+    .. deprecated:: 1.0.0
+        Use :func:`mokutools.moku_io.core.upload` for programmatic use,
+        or :func:`mokutools.moku_io.cli.upload_files_interactive` for CLI use.
 
-def parse_csv_file(filename, delimiter=None, logger=None):
+    Parameters
+    ----------
+    ip : str
+        IP address of the device (e.g., '10.128.100.198').
+    files : str or list of str
+        Path to a local file or list of local file paths to upload.
+
+    Returns
+    -------
+    None
     """
-    Parse a CSV file. It is potentially packaged in ZIP, TAR, GZ, or 7z format.
-
-    Args:
-        filename (str): Location of the file
-
-    Returns:
-        num_cols (int): Number of columns in the data
-        num_rows (int): Total number of rows (including headers)
-        num_header_rows (int): Number of detected header lines
-        header (list): List of header lines
-    """
-    if logger is None:
-        logger = logging.getLogger(__name__)
-
-    def process_stream(file_obj):
-        header_symbols = ['#', '%', '!', '@', ';', '&', '*', '/']
-        header = []
-        num_header_rows = 0
-        num_rows = 0
-        data_lines_sample = []
-        num_cols = None
-
-        # Wrap binary streams in text wrapper
-        if isinstance(file_obj.read(0), bytes):
-            file_obj = TextIOWrapper(file_obj, encoding='utf-8')
-        file_obj.seek(0)
-
-        for line in file_obj:
-            num_rows += 1
-            if any(line.startswith(symbol) for symbol in header_symbols):
-                header.append(line)
-                num_header_rows += 1
-            else:
-                # Capture a few non-header lines to detect delimiter
-                if len(data_lines_sample) < 5 and line.strip():
-                    data_lines_sample.append(line)
-                # Try to determine number of columns from the first non-empty, non-header line
-                if num_cols is None and line.strip():
-                    try:
-                        sniffed = csv.Sniffer().sniff(''.join(data_lines_sample))
-                        detected_delimiter = sniffed.delimiter
-                    except csv.Error:
-                        detected_delimiter = delimiter if delimiter else ','
-                    num_cols = len(line.strip().split(detected_delimiter))
-        if num_cols is None:
-            raise ValueError("No valid data lines found to determine column count.")
-        return num_cols, num_rows, num_header_rows, header
-
-    def process_file(path):
-        if zipfile.is_zipfile(path):
-            with zipfile.ZipFile(path, 'r') as zip_ref:
-                first_file_name = zip_ref.namelist()[0]
-                with zip_ref.open(first_file_name, 'r') as f:
-                    return process_stream(f)
-        elif tarfile.is_tarfile(path):
-            with tarfile.open(path, 'r') as tar_ref:
-                first_member = tar_ref.getmembers()[0]
-                with tar_ref.extractfile(first_member) as f:
-                    return process_stream(f)
-        elif path.endswith('.gz'):
-            with gzip.open(path, 'rb') as f:
-                return process_stream(f)
-        elif path.endswith('.7z'):
-            with SevenZipFile(path, 'r') as seven_zip_ref:
-                first_file_name = seven_zip_ref.getnames()[0]
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    seven_zip_ref.extract(path=temp_dir, targets=[first_file_name])
-                    extracted_file = os.path.join(temp_dir, first_file_name)
-                    with open(extracted_file, 'rb') as f:
-                        return process_stream(f)
-        else:
-            with open(path, 'r', encoding='utf-8') as f:
-                return process_stream(f)
-
-    logger.debug(f"Reading from file: {filename}")
-    num_cols, num_rows, num_header_rows, header = process_file(filename)
-
-    if num_header_rows == 0:
-        raise ValueError("No header lines detected. Ensure the file format is correct.")
-
-    logger.debug(f"File contains {num_rows} total rows, {num_header_rows} header rows, and {num_cols} columns")
-    return num_cols, num_rows, num_header_rows, header
-
-def get_columns_with_nans(df):
-    """
-    Find columns with NaNs in a DataFrame.
-
-    Args: 
-        df (DataFrame): the DataFrame
-
-    Returns:
-        columns_with_nans (dict): dictionary of columns with NaNs
-    """
-    columns_with_nans = {}
-    for column in df.columns:
-        if df[column].isna().any():
-            # Get the column number
-            column_number = df.columns.get_loc(column)
-            columns_with_nans[column] = column_number
-    return columns_with_nans
-
-def display_menu(files):
-    """
-    Display a menu of options for the user.
-    
-    Args:
-        files (list): list of files the user can choose
-    """
-    print("\nChoose two CSV files for processing (Master device first):")
-    for idx, file in enumerate(files):
-        print(f"{idx + 1}. {file}")
-    print("Q. Quit")
-
-def get_two_file_choice(files):
-    """
-    Get the user's choice of files.
-    
-    Args:
-        files (list): list of potential choices
-
-    Returns:
-        ('Q', None) if user chooses to quit
-        ('F', file_choices) if user chose two files
-    """
-    while True:
-        choice = input("E.g., enter 1 2 if file #1 is Master and file #2 is Slave (Q to quit): ").strip().upper()
-        if choice == 'Q':
-            return 'Q', None
-        
-        try:
-            choices = [int(ch) for ch in choice.split()]
-            if len(choices) == 2 and all(1 <= ch <= len(files) for ch in choices):
-                return 'F', [files[ch - 1] for ch in choices]
-        except ValueError:
-            pass
-
-def get_single_file_choice(files):
-    """
-    Prompt user to select a single file from a list.
-
-    Args:
-        files (list): list of file name strings.
-
-    Returns:
-        str: filename selected by the user, or None if they quit.
-    """
-    while True:
-        choice = input("Enter the number of the file to download (Q to quit): ").strip().upper()
-        if choice == 'Q':
-            return None
-        try:
-            idx = int(choice)
-            if 1 <= idx <= len(files):
-                return files[idx - 1]
-        except ValueError:
-            pass
-
-def select_file_widget(files):
-    """
-    Display a dropdown widget for selecting a file and return the widget.
-    The user is expected to read `.value` after selection.
-    """
-    dropdown = widgets.Dropdown(
-        options=files,
-        description='Select file:',
-        layout=widgets.Layout(width='100%'),
-        style={'description_width': 'initial'}
+    warnings.warn(
+        "upload_files is deprecated. Use mokutools.moku_io.core.upload "
+        "or mokutools.moku_io.cli.upload_files_interactive instead.",
+        DeprecationWarning,
+        stacklevel=2
     )
-    display(dropdown)
-    return dropdown
+    
+    try:
+        results = upload(ip, files)
+        for filename, success in results.items():
+            if success:
+                print(f"✅ Uploaded: {filename}")
+            else:
+                print(f"❌ Failed to upload: {filename}")
+    except FileNotFoundError as e:
+        print(f"❌ File not found: {e}")
+    except Exception as e:
+        print(f"❌ Error uploading files: {e}")
+
+
+# Re-export core functions (no deprecation warnings for these)
+__all__ = [
+    # Core functions (new API)
+    "list_files",
+    "download_and_convert",
+    "upload",
+    "delete",
+    "parse_csv_file",
+    "is_mat_file",
+    "is_li_file",
+    "read_lines",
+    "get_columns_with_nans",
+    # Legacy functions (deprecated)
+    "get_file_list",
+    "download_files",
+    "delete_files",
+    "upload_files",
+    # CLI helpers
+    "display_menu",
+    "get_two_file_choice",
+    "get_single_file_choice",
+    # Notebook widgets
+    "select_file_widget",
+    # Constants
+    "SERVER_URL",
+    "DATA_DIR",
+]

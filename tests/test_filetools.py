@@ -23,7 +23,7 @@ from mokutools.filetools import (
 class TestGetFileList:
     """Tests for get_file_list function."""
 
-    @patch('mokutools.filetools.requests.get')
+    @patch('mokutools.moku_io.core.requests.get')
     def test_get_file_list_success(self, mock_get):
         """Test successful file list retrieval."""
         # Mock response
@@ -40,7 +40,7 @@ class TestGetFileList:
         mock_get.assert_called_once_with("http://10.128.100.198/api/ssd/list")
         mock_response.raise_for_status.assert_called_once()
 
-    @patch('mokutools.filetools.requests.get')
+    @patch('mokutools.moku_io.core.requests.get')
     def test_get_file_list_with_filter(self, mock_get):
         """Test file list retrieval with filter."""
         mock_response = Mock()
@@ -55,7 +55,7 @@ class TestGetFileList:
         assert result == ["test_file1.li", "test_file2.li", "TEST_file3.li"]
         assert "other_file.li" not in result
 
-    @patch('mokutools.filetools.requests.get')
+    @patch('mokutools.moku_io.core.requests.get')
     def test_get_file_list_with_multiple_filters(self, mock_get):
         """Test file list retrieval with multiple filters (AND logic)."""
         mock_response = Mock()
@@ -71,7 +71,7 @@ class TestGetFileList:
         assert "other_test.li" not in result
         assert "file1.li" not in result
 
-    @patch('mokutools.filetools.requests.get')
+    @patch('mokutools.moku_io.core.requests.get')
     def test_get_file_list_empty_data(self, mock_get):
         """Test file list retrieval with empty data."""
         mock_response = Mock()
@@ -83,7 +83,7 @@ class TestGetFileList:
 
         assert result == []
 
-    @patch('mokutools.filetools.requests.get')
+    @patch('mokutools.moku_io.core.requests.get')
     def test_get_file_list_missing_data_key(self, mock_get):
         """Test file list retrieval when data key is missing."""
         mock_response = Mock()
@@ -95,7 +95,7 @@ class TestGetFileList:
 
         assert result == []
 
-    @patch('mokutools.filetools.requests.get')
+    @patch('mokutools.moku_io.core.requests.get')
     def test_get_file_list_http_error(self, mock_get):
         """Test file list retrieval with HTTP error."""
         mock_response = Mock()
@@ -109,13 +109,13 @@ class TestGetFileList:
 class TestDownloadFiles:
     """Tests for download_files function."""
 
-    @patch('mokutools.filetools.shutil.which')
-    @patch('mokutools.filetools.get_file_list')
-    @patch('mokutools.filetools.requests.get')
-    @patch('mokutools.filetools.subprocess.run')
-    @patch('mokutools.filetools.os.makedirs')
-    @patch('mokutools.filetools.os.remove')
-    @patch('mokutools.filetools.shutil.move')
+    @patch('mokutools.moku_io.core.shutil.which')
+    @patch('mokutools.moku_io.core.list_files')
+    @patch('mokutools.moku_io.core.requests.get')
+    @patch('mokutools.moku_io.core.subprocess.run')
+    @patch('mokutools.moku_io.core.os.makedirs')
+    @patch('mokutools.moku_io.core.os.remove')
+    @patch('mokutools.moku_io.core.shutil.move')
     @patch('builtins.open', new_callable=mock_open)
     def test_download_files_basic(
         self,
@@ -125,12 +125,12 @@ class TestDownloadFiles:
         mock_makedirs,
         mock_subprocess,
         mock_get,
-        mock_get_file_list,
+        mock_list_files,
         mock_which,
     ):
         """Test basic file download without conversion."""
         mock_which.return_value = None  # mokucli not found, but convert=False
-        mock_get_file_list.return_value = ["test_file.li"]
+        mock_list_files.return_value = ["test_file.li"]
         
         # Mock download response
         mock_response = Mock()
@@ -141,18 +141,18 @@ class TestDownloadFiles:
 
         download_files("10.128.100.198", file_names="test", convert=False, archive=False)
 
-        mock_get_file_list.assert_called_once_with("10.128.100.198")
+        mock_list_files.assert_called_once_with("10.128.100.198")
         mock_makedirs.assert_called_once()
         mock_get.assert_called_once_with("http://10.128.100.198/api/ssd/download/test_file.li", stream=True)
 
-    @patch('mokutools.filetools.shutil.which')
-    @patch('mokutools.filetools.get_file_list')
-    @patch('mokutools.filetools.requests.get')
-    @patch('mokutools.filetools.subprocess.run')
-    @patch('mokutools.filetools.zipfile.ZipFile')
-    @patch('mokutools.filetools.os.makedirs')
-    @patch('mokutools.filetools.os.remove')
-    @patch('mokutools.filetools.shutil.move')
+    @patch('mokutools.moku_io.core.shutil.which')
+    @patch('mokutools.moku_io.core.list_files')
+    @patch('mokutools.moku_io.core.requests.get')
+    @patch('mokutools.moku_io.core.subprocess.run')
+    @patch('mokutools.moku_io.core.zipfile.ZipFile')
+    @patch('mokutools.moku_io.core.os.makedirs')
+    @patch('mokutools.moku_io.core.os.remove')
+    @patch('mokutools.moku_io.core.shutil.move')
     @patch('builtins.open', new_callable=mock_open)
     def test_download_files_with_conversion_and_archive(
         self,
@@ -163,13 +163,13 @@ class TestDownloadFiles:
         mock_zipfile,
         mock_subprocess,
         mock_get,
-        mock_get_file_list,
+        mock_list_files,
         mock_which,
     ):
         """Test file download with conversion and archiving."""
         import os
         mock_which.return_value = "/usr/bin/mokucli"
-        mock_get_file_list.return_value = ["test_file.li"]
+        mock_list_files.return_value = ["test_file.li"]
         
         # Mock download response
         mock_response = Mock()
@@ -201,41 +201,42 @@ class TestDownloadFiles:
         if os.path.exists("test_file.csv"):
             os.remove("test_file.csv")
 
-    @patch('mokutools.filetools.shutil.which')
-    @patch('mokutools.filetools.get_file_list')
-    def test_download_files_no_mokucli_when_convert_true(self, mock_get_file_list, mock_which):
+    @patch('mokutools.moku_io.core.shutil.which')
+    @patch('mokutools.moku_io.core.list_files')
+    def test_download_files_no_mokucli_when_convert_true(self, mock_list_files, mock_which):
         """Test that download_files returns early if mokucli not found and convert=True."""
         mock_which.return_value = None
-        mock_get_file_list.return_value = ["test_file.li"]
+        mock_list_files.return_value = ["test_file.li"]
 
-        result = download_files("10.128.100.198", file_names="test", convert=True)
+        with patch('builtins.print'):  # Suppress print output
+            result = download_files("10.128.100.198", file_names="test", convert=True)
 
         assert result is None
-        mock_get_file_list.assert_not_called()
+        mock_list_files.assert_not_called()
 
-    @patch('mokutools.filetools.get_file_list')
-    def test_download_files_no_matching_files(self, mock_get_file_list):
+    @patch('mokutools.moku_io.core.list_files')
+    def test_download_files_no_matching_files(self, mock_list_files):
         """Test download_files when no matching files are found."""
-        mock_get_file_list.return_value = ["other_file.li"]
+        mock_list_files.return_value = ["other_file.li"]
 
         with patch('builtins.print'):  # Suppress print output
             result = download_files("10.128.100.198", file_names="test", convert=False)
 
         assert result is None
 
-    @patch('mokutools.filetools.get_file_list')
-    def test_download_files_with_date_filter(self, mock_get_file_list):
+    @patch('mokutools.moku_io.core.list_files')
+    def test_download_files_with_date_filter(self, mock_list_files):
         """Test download_files with date filter."""
-        mock_get_file_list.return_value = [
+        mock_list_files.return_value = [
             "data_20240101_file1.li",
             "data_20240102_file2.li",
             "data_20240101_file3.li"
         ]
 
-        with patch('mokutools.filetools.requests.get') as mock_get, \
+        with patch('mokutools.moku_io.core.requests.get') as mock_get, \
              patch('builtins.open', new_callable=mock_open), \
-             patch('mokutools.filetools.os.makedirs'), \
-             patch('mokutools.filetools.shutil.move'), \
+             patch('mokutools.moku_io.core.os.makedirs'), \
+             patch('mokutools.moku_io.core.shutil.move'), \
              patch('builtins.print'):
             
             mock_response = Mock()
@@ -249,21 +250,22 @@ class TestDownloadFiles:
             # Should download 2 files matching the date
             assert mock_get.call_count == 2
 
-    @patch('mokutools.filetools.get_file_list')
-    def test_download_files_raises_error_when_no_file_names_or_date(self, mock_get_file_list):
+    @patch('mokutools.moku_io.core.list_files')
+    def test_download_files_raises_error_when_no_file_names_or_date(self, mock_list_files):
         """Test that download_files raises ValueError when neither file_names nor date provided."""
-        with pytest.raises(ValueError, match="You must provide either"):
-            download_files("10.128.100.198", convert=False)
+        with patch('builtins.print'):  # Suppress print output
+            with pytest.raises(ValueError, match="You must provide either"):
+                download_files("10.128.100.198", convert=False)
 
-    @patch('mokutools.filetools.shutil.which')
-    @patch('mokutools.filetools.get_file_list')
-    @patch('mokutools.filetools.requests.get')
-    @patch('mokutools.filetools.requests.delete')
-    @patch('mokutools.filetools.subprocess.run')
-    @patch('mokutools.filetools.zipfile.ZipFile')
-    @patch('mokutools.filetools.os.makedirs')
-    @patch('mokutools.filetools.os.remove')
-    @patch('mokutools.filetools.shutil.move')
+    @patch('mokutools.moku_io.core.shutil.which')
+    @patch('mokutools.moku_io.core.list_files')
+    @patch('mokutools.moku_io.core.requests.get')
+    @patch('mokutools.moku_io.core.requests.delete')
+    @patch('mokutools.moku_io.core.subprocess.run')
+    @patch('mokutools.moku_io.core.zipfile.ZipFile')
+    @patch('mokutools.moku_io.core.os.makedirs')
+    @patch('mokutools.moku_io.core.os.remove')
+    @patch('mokutools.moku_io.core.shutil.move')
     @patch('builtins.open', new_callable=mock_open)
     def test_download_files_remove_from_server(
         self,
@@ -275,13 +277,13 @@ class TestDownloadFiles:
         mock_subprocess,
         mock_delete,
         mock_get,
-        mock_get_file_list,
+        mock_list_files,
         mock_which,
     ):
         """Test download_files with remove_from_server=True."""
         import os
         mock_which.return_value = "/usr/bin/mokucli"
-        mock_get_file_list.return_value = ["test_file.li"]
+        mock_list_files.return_value = ["test_file.li"]
         
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
