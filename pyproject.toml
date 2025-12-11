@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mokutools"
+version = "1.0.0"
+description = "Liquid Instruments Moku:Lab and Moku:Pro Phasemeter Data Analysis"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "BSD-3-Clause"}
+authors = [
+    {name = "Miguel Dovale", email = "mdovale@arizona.edu"}
+]
+keywords = [
+    "phasemeter",
+    "moku",
+    "liquid-instruments",
+    "frequency-analysis",
+    "phase-analysis",
+    "metrology",
+    "signal-processing"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+dependencies = [
+    "numpy>=1.20.0",
+    "pandas>=1.3.0",
+    "scipy>=1.7.0",
+    "matplotlib>=3.4.0",
+    "ipywidgets>=7.6.0",
+    "requests>=2.25.0",
+    "py7zr>=0.20.0",
+    "speckit",
+    "pytdi",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+    "black>=22.0.0",
+    "flake8>=4.0.0",
+    "mypy>=0.950",
+]
+
+[project.urls]
+Homepage = "https://github.com/mdovale/mokutools"
+Documentation = "https://github.com/mdovale/mokutools#readme"
+Repository = "https://github.com/mdovale/mokutools"
+Issues = "https://github.com/mdovale/mokutools/issues"
+
+[tool.setuptools]
+packages = ["mokutools"]
+
+[tool.setuptools.package-data]
+mokutools = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
