@@ -43,7 +43,7 @@ from mokutools.moku_io.core import (
 )
 
 
-def display_menu(files: List[str]) -> None:
+def print_menu(files: List[str]) -> None:
     """
     Display a menu of options for the user.
     
@@ -58,7 +58,7 @@ def display_menu(files: List[str]) -> None:
     print("Q. Quit")
 
 
-def get_two_file_choice(files: List[str]) -> Tuple[str, Optional[List[str]]]:
+def pick_two_files(files: List[str]) -> Tuple[str, Optional[List[str]]]:
     """
     Get the user's choice of files.
     
@@ -88,7 +88,7 @@ def get_two_file_choice(files: List[str]) -> Tuple[str, Optional[List[str]]]:
             pass
 
 
-def get_single_file_choice(files: List[str]) -> Optional[str]:
+def pick_file(files: List[str]) -> Optional[str]:
     """
     Prompt user to select a single file from a list.
 
@@ -114,7 +114,7 @@ def get_single_file_choice(files: List[str]) -> Optional[str]:
             pass
 
 
-def download_files_interactive(
+def download_cli(
     ip: str,
     file_names: Optional[List[str]] = None,
     date: Optional[str] = None,
@@ -166,7 +166,7 @@ def download_files_interactive(
         print(f"❌ Error processing files: {e}")
 
 
-def upload_files_interactive(ip: str, files: List[str]) -> None:
+def upload_cli(ip: str, files: List[str]) -> None:
     """
     Interactive wrapper for upload with user-friendly output.
 
@@ -190,7 +190,7 @@ def upload_files_interactive(ip: str, files: List[str]) -> None:
         print(f"❌ Error uploading files: {e}")
 
 
-def delete_files_interactive(
+def delete_cli(
     ip: str,
     file_names: Optional[List[str]] = None,
     delete_all: bool = False,

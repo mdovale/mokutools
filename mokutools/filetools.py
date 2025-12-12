@@ -53,9 +53,9 @@ from mokutools.moku_io.core import (
 
 # Import CLI helpers
 from mokutools.moku_io.cli import (
-    display_menu,
-    get_two_file_choice,
-    get_single_file_choice,
+    print_menu,
+    pick_two_files,
+    pick_file,
 )
 
 # Import notebook widgets
@@ -111,7 +111,7 @@ def download_files(
     
     .. deprecated:: 1.0.0
         Use :func:`mokutools.moku_io.core.download` for programmatic use,
-        or :func:`mokutools.moku_io.cli.download_files_interactive` for CLI use.
+        or :func:`mokutools.moku_io.cli.download_cli` for CLI use.
 
     Parameters
     ----------
@@ -138,7 +138,7 @@ def download_files(
     """
     warnings.warn(
         "download_files is deprecated. Use mokutools.moku_io.core.download "
-        "or mokutools.moku_io.cli.download_files_interactive instead.",
+        "or mokutools.moku_io.cli.download_cli instead.",
         DeprecationWarning,
         stacklevel=2
     )
@@ -183,7 +183,7 @@ def delete_files(
     
     .. deprecated:: 1.0.0
         Use :func:`mokutools.moku_io.notebook.delete_files_widget` for notebook use,
-        or :func:`mokutools.moku_io.cli.delete_files_interactive` for CLI use.
+        or :func:`mokutools.moku_io.cli.delete_cli` for CLI use.
 
     Parameters
     ----------
@@ -200,7 +200,7 @@ def delete_files(
     """
     warnings.warn(
         "delete_files is deprecated. Use mokutools.moku_io.notebook.delete_files_widget "
-        "or mokutools.moku_io.cli.delete_files_interactive instead.",
+        "or mokutools.moku_io.cli.delete_cli instead.",
         DeprecationWarning,
         stacklevel=2
     )
@@ -216,7 +216,7 @@ def upload_files(ip: str, files: Union[str, List[str]]) -> None:
     
     .. deprecated:: 1.0.0
         Use :func:`mokutools.moku_io.core.upload` for programmatic use,
-        or :func:`mokutools.moku_io.cli.upload_files_interactive` for CLI use.
+        or :func:`mokutools.moku_io.cli.upload_cli` for CLI use.
 
     Parameters
     ----------
@@ -231,7 +231,7 @@ def upload_files(ip: str, files: Union[str, List[str]]) -> None:
     """
     warnings.warn(
         "upload_files is deprecated. Use mokutools.moku_io.core.upload "
-        "or mokutools.moku_io.cli.upload_files_interactive instead.",
+        "or mokutools.moku_io.cli.upload_cli instead.",
         DeprecationWarning,
         stacklevel=2
     )
@@ -267,9 +267,9 @@ __all__ = [
     "delete_files",
     "upload_files",
     # CLI helpers
-    "display_menu",
-    "get_two_file_choice",
-    "get_single_file_choice",
+    "print_menu",
+    "pick_two_files",
+    "pick_file",
     # Notebook widgets
     "select_file_widget",
     # Constants

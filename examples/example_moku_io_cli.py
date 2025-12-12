@@ -15,12 +15,12 @@ Note: Replace the IP address with your actual Moku device IP address.
 """
 
 from mokutools.moku_io.cli import (
-    download_files_interactive,
-    upload_files_interactive,
-    delete_files_interactive,
-    display_menu,
-    get_single_file_choice,
-    get_two_file_choice,
+    download_cli,
+    upload_cli,
+    delete_cli,
+    print_menu,
+    pick_file,
+    pick_two_files,
 )
 from mokutools.moku_io.core import list_files
 
@@ -70,7 +70,7 @@ def example_interactive_download_by_pattern(ip: str):
     
     # Download files matching a pattern
     # This will convert .li to .csv and optionally archive
-    download_files_interactive(
+    download_cli(
         ip=ip,
         file_names=["example"],  # Match files containing "example"
         convert=True,             # Convert .li to .csv
@@ -87,7 +87,7 @@ def example_interactive_download_by_date(ip: str):
     print("="*60)
     
     # Download files from a specific date (YYYYMMDD format)
-    download_files_interactive(
+    download_cli(
         ip=ip,
         date="20250101",          # Date filter
         convert=True,
@@ -109,7 +109,7 @@ def example_interactive_upload(ip: str):
         # Add more file paths as needed
     ]
     
-    upload_files_interactive(ip=ip, files=files_to_upload)
+    upload_cli(ip=ip, files=files_to_upload)
 
 
 def example_interactive_delete_by_pattern(ip: str):
@@ -119,7 +119,7 @@ def example_interactive_delete_by_pattern(ip: str):
     print("="*60)
     
     # Delete files matching a pattern (will prompt for confirmation)
-    delete_files_interactive(
+    delete_cli(
         ip=ip,
         file_names=["temp"],  # Match files containing "temp"
         delete_all=False,
@@ -134,7 +134,7 @@ def example_interactive_delete_all(ip: str):
     
     # Delete all files (will prompt for confirmation)
     # WARNING: This will delete all files on the device!
-    delete_files_interactive(
+    delete_cli(
         ip=ip,
         delete_all=True,
     )
@@ -156,7 +156,7 @@ def example_interactive_menu_single_choice(ip: str):
         for idx, file in enumerate(files, 1):
             print(f"{idx}. {file}")
         
-        selected = get_single_file_choice(files)
+        selected = pick_file(files)
         if selected:
             print(f"\n✅ Selected file: {selected}")
         else:
@@ -177,8 +177,8 @@ def example_interactive_menu_two_choice(ip: str):
             print("No files available on device")
             return
         
-        display_menu(files)
-        choice, file_list = get_two_file_choice(files)
+        print_menu(files)
+        choice, file_list = pick_two_files(files)
         
         if choice == 'F' and file_list:
             print(f"\n✅ Selected files:")

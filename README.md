@@ -92,13 +92,13 @@ delete(ip='10.128.100.188', patterns=['temp'])
 
 ```python
 from mokutools.moku_io.cli import (
-    download_files_interactive,
-    upload_files_interactive,
-    delete_files_interactive
+    download_cli,
+    upload_cli,
+    delete_cli
 )
 
 # Interactive download with prompts
-download_files_interactive(
+download_cli(
     ip='10.128.100.188',
     file_names=['measurement'],
     convert=True,
