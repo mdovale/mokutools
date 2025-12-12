@@ -38,6 +38,7 @@ pip install -e ".[dev]"
 - ipywidgets >= 7.6.0 (for notebook support)
 - requests >= 2.25.0
 - py7zr >= 0.20.0
+- typer >= 0.12.0 (for CLI)
 - speckit
 - pytdi
 
@@ -88,23 +89,57 @@ upload(ip='10.128.100.188', files=['local_file.csv'])
 delete(ip='10.128.100.188', patterns=['temp'])
 ```
 
-### Interactive CLI
+### Shell CLI
+
+After installation, use the `moku` command from any shell:
+
+```bash
+# List files on device
+moku ls 10.128.100.188
+
+# Download files matching patterns
+moku dl 10.128.100.188 --pattern foo bar --date 20250101
+
+# Download with interactive mode
+moku dl 10.128.100.188 --interactive
+
+# Upload files
+moku up 10.128.100.188 file1.csv file2.csv
+
+# Delete files (with confirmation)
+moku rm 10.128.100.188 --pattern temp --interactive
+
+# Delete all files (requires --yes flag)
+moku rm 10.128.100.188 --all --yes
+```
+
+You can also run the CLI as a Python module:
+
+```bash
+python -m mokutools.moku_io.cli ls 10.128.100.188
+```
+
+### Interactive CLI (Python)
 
 ```python
-from mokutools.moku_io.cli import (
-    download_cli,
-    upload_cli,
-    delete_cli
-)
+from mokutools.moku_io.cli import dl, up, rm
 
 # Interactive download with prompts
-download_cli(
+dl(
     ip='10.128.100.188',
     file_names=['measurement'],
     convert=True,
     archive=True
 )
+
+# Upload files
+up(ip='10.128.100.188', files=['local_file.csv'])
+
+# Delete files (with confirmation)
+rm(ip='10.128.100.188', file_names=['temp'])
 ```
+
+**Note:** The old function names (`download_cli`, `upload_cli`, `delete_cli`) are still available but deprecated. Use `dl`, `up`, and `rm` instead.
 
 ### Jupyter Notebooks
 
