@@ -39,7 +39,7 @@ import ipywidgets as widgets
 from IPython.display import display, clear_output
 from mokutools.moku_io.core import (
     list_files,
-    download_and_convert,
+    download,
     upload,
     delete,
 )
@@ -80,7 +80,7 @@ def download_files_widget(
     remove_from_server: bool = False,
 ) -> widgets.Output:
     """
-    Interactive widget wrapper for download_and_convert with progress display.
+    Interactive widget wrapper for download with progress display.
 
     Parameters
     ----------
@@ -111,7 +111,7 @@ def download_files_widget(
             clear_output()
             try:
                 patterns = file_names if file_names else None
-                processed = download_and_convert(
+                processed = download(
                     ip=ip,
                     patterns=patterns,
                     date=date,

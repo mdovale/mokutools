@@ -17,7 +17,7 @@ import scipy.io
 
 from mokutools.moku_io.core import (
     list_files,
-    download_and_convert,
+    download,
     upload,
     delete,
     parse_csv_file,
@@ -114,8 +114,8 @@ class TestListFiles:
             list_files("10.128.100.198")
 
 
-class TestDownloadAndConvert:
-    """Tests for download_and_convert function."""
+class TestDownload:
+    """Tests for download function."""
 
     @patch('mokutools.moku_io.core.shutil.which')
     @patch('mokutools.moku_io.core.list_files')
@@ -125,7 +125,7 @@ class TestDownloadAndConvert:
     @patch('mokutools.moku_io.core.os.remove')
     @patch('mokutools.moku_io.core.shutil.move')
     @patch('builtins.open', new_callable=mock_open)
-    def test_download_and_convert_basic(
+    def test_download_basic(
         self,
         mock_file,
         mock_move,
@@ -147,7 +147,7 @@ class TestDownloadAndConvert:
         mock_get.return_value.__enter__.return_value = mock_response
         mock_get.return_value.__exit__ = Mock(return_value=None)
 
-        result = download_and_convert("10.128.100.198", patterns="test", convert=False, archive=False)
+        result = download("10.128.100.198", patterns="test", convert=False, archive=False)
 
         assert result == ["test_file.li"]
         mock_list_files.assert_called_once_with("10.128.100.198")
@@ -163,7 +163,7 @@ class TestDownloadAndConvert:
     @patch('mokutools.moku_io.core.os.remove')
     @patch('mokutools.moku_io.core.shutil.move')
     @patch('builtins.open', new_callable=mock_open)
-    def test_download_and_convert_with_conversion_and_archive(
+    def test_download_with_conversion_and_archive(
         self,
         mock_file,
         mock_move,
@@ -199,7 +199,7 @@ class TestDownloadAndConvert:
         mock_zipfile.return_value.__enter__.return_value = mock_zip
         mock_zipfile.return_value.__exit__ = Mock(return_value=None)
 
-        result = download_and_convert("10.128.100.198", patterns="test", convert=True, archive=True)
+        result = download("10.128.100.198", patterns="test", convert=True, archive=True)
 
         assert result == ["test_file.li"]
         mock_subprocess.assert_called_once()
@@ -212,26 +212,26 @@ class TestDownloadAndConvert:
 
     @patch('mokutools.moku_io.core.shutil.which')
     @patch('mokutools.moku_io.core.list_files')
-    def test_download_and_convert_no_mokucli_when_convert_true(self, mock_list_files, mock_which):
-        """Test that download_and_convert raises error if mokucli not found and convert=True."""
+    def test_download_no_mokucli_when_convert_true(self, mock_list_files, mock_which):
+        """Test that download raises error if mokucli not found and convert=True."""
         mock_which.return_value = None
         mock_list_files.return_value = ["test_file.li"]
 
         with pytest.raises(ValueError, match="mokucli not found"):
-            download_and_convert("10.128.100.198", patterns="test", convert=True)
+            download("10.128.100.198", patterns="test", convert=True)
 
     @patch('mokutools.moku_io.core.list_files')
-    def test_download_and_convert_no_matching_files(self, mock_list_files):
-        """Test download_and_convert when no matching files are found."""
+    def test_download_no_matching_files(self, mock_list_files):
+        """Test download when no matching files are found."""
         mock_list_files.return_value = ["other_file.li"]
 
-        result = download_and_convert("10.128.100.198", patterns="test", convert=False)
+        result = download("10.128.100.198", patterns="test", convert=False)
 
         assert result == []
 
     @patch('mokutools.moku_io.core.list_files')
-    def test_download_and_convert_with_date_filter(self, mock_list_files):
-        """Test download_and_convert with date filter."""
+    def test_download_with_date_filter(self, mock_list_files):
+        """Test download with date filter."""
         mock_list_files.return_value = [
             "data_20240101_file1.li",
             "data_20240102_file2.li",
@@ -249,17 +249,17 @@ class TestDownloadAndConvert:
             mock_get.return_value.__enter__.return_value = mock_response
             mock_get.return_value.__exit__ = Mock(return_value=None)
 
-            result = download_and_convert("10.128.100.198", date="20240101", convert=False)
+            result = download("10.128.100.198", date="20240101", convert=False)
 
             # Should download 2 files matching the date
             assert len(result) == 2
             assert mock_get.call_count == 2
 
     @patch('mokutools.moku_io.core.list_files')
-    def test_download_and_convert_raises_error_when_no_patterns_or_date(self, mock_list_files):
-        """Test that download_and_convert raises ValueError when neither patterns nor date provided."""
+    def test_download_raises_error_when_no_patterns_or_date(self, mock_list_files):
+        """Test that download raises ValueError when neither patterns nor date provided."""
         with pytest.raises(ValueError, match="You must provide either"):
-            download_and_convert("10.128.100.198", convert=False)
+            download("10.128.100.198", convert=False)
 
     @patch('mokutools.moku_io.core.shutil.which')
     @patch('mokutools.moku_io.core.list_files')
@@ -271,7 +271,7 @@ class TestDownloadAndConvert:
     @patch('mokutools.moku_io.core.os.remove')
     @patch('mokutools.moku_io.core.shutil.move')
     @patch('builtins.open', new_callable=mock_open)
-    def test_download_and_convert_remove_from_server(
+    def test_download_remove_from_server(
         self,
         mock_file,
         mock_move,
@@ -284,7 +284,7 @@ class TestDownloadAndConvert:
         mock_list_files,
         mock_which,
     ):
-        """Test download_and_convert with remove_from_server=True."""
+        """Test download with remove_from_server=True."""
         mock_which.return_value = "/usr/bin/mokucli"
         mock_list_files.return_value = ["test_file.li"]
         
@@ -313,7 +313,7 @@ class TestDownloadAndConvert:
         mock_zipfile.return_value.__enter__.return_value = mock_zip
         mock_zipfile.return_value.__exit__ = Mock(return_value=None)
 
-        result = download_and_convert(
+        result = download(
             "10.128.100.198",
             patterns="test",
             convert=True,

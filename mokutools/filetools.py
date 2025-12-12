@@ -41,7 +41,7 @@ from typing import List, Optional, Union
 # Import core functions
 from mokutools.moku_io.core import (
     list_files,
-    download_and_convert,
+    download,
     upload,
     delete,
     parse_csv_file,
@@ -110,7 +110,7 @@ def download_files(
     Download `.li` files from a Moku device and optionally convert, compress, and delete them.
     
     .. deprecated:: 1.0.0
-        Use :func:`mokutools.moku_io.core.download_and_convert` for programmatic use,
+        Use :func:`mokutools.moku_io.core.download` for programmatic use,
         or :func:`mokutools.moku_io.cli.download_files_interactive` for CLI use.
 
     Parameters
@@ -137,7 +137,7 @@ def download_files(
         This function processes files as described but returns no value.
     """
     warnings.warn(
-        "download_files is deprecated. Use mokutools.moku_io.core.download_and_convert "
+        "download_files is deprecated. Use mokutools.moku_io.core.download "
         "or mokutools.moku_io.cli.download_files_interactive instead.",
         DeprecationWarning,
         stacklevel=2
@@ -145,7 +145,7 @@ def download_files(
     
     try:
         patterns = file_names if file_names else None
-        processed = download_and_convert(
+        processed = download(
             ip=ip,
             patterns=patterns,
             date=date,
@@ -253,7 +253,7 @@ def upload_files(ip: str, files: Union[str, List[str]]) -> None:
 __all__ = [
     # Core functions (new API)
     "list_files",
-    "download_and_convert",
+    "download",
     "upload",
     "delete",
     "parse_csv_file",

@@ -97,7 +97,7 @@ def list_files(ip: str, filters: Optional[List[str]] = None) -> List[str]:
     return file_list
 
 
-def download_and_convert(
+def download(
     ip: str,
     patterns: Optional[Union[str, List[str]]] = None,
     date: Optional[str] = None,

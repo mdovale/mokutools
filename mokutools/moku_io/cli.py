@@ -37,7 +37,7 @@ menus, prompts, and formatted output.
 from typing import List, Optional, Tuple
 from mokutools.moku_io.core import (
     list_files,
-    download_and_convert,
+    download,
     upload,
     delete,
 )
@@ -124,7 +124,7 @@ def download_files_interactive(
     remove_from_server: bool = False,
 ) -> None:
     """
-    Interactive wrapper for download_and_convert with user-friendly output.
+    Interactive wrapper for download with user-friendly output.
 
     Parameters
     ----------
@@ -145,7 +145,7 @@ def download_files_interactive(
     """
     try:
         patterns = file_names if file_names else None
-        processed = download_and_convert(
+        processed = download(
             ip=ip,
             patterns=patterns,
             date=date,

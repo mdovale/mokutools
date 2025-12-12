@@ -42,7 +42,7 @@ from speckit import compute_spectrum as ltf
 import speckit.dsp as dsp
 from mokutools.moku_io.core import (
     list_files,
-    download_and_convert,
+    download,
     parse_csv_file,
     is_mat_file,
     is_li_file,
@@ -132,7 +132,7 @@ class MokuPhasemeterObject:
                 selected_file = matches[0]
 
             logger.debug(f"Downloading selected file: {selected_file}")
-            download_and_convert(
+            download(
                 ip=ip,
                 patterns=selected_file,
                 convert=False,

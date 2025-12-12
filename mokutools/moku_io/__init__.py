@@ -36,7 +36,7 @@ without any interactive I/O (no print, input, widgets, or sys.exit).
 
 from mokutools.moku_io.core import (
     list_files,
-    download_and_convert,
+    download,
     upload,
     delete,
     parse_csv_file,
@@ -48,7 +48,7 @@ from mokutools.moku_io.core import (
 
 __all__ = [
     "list_files",
-    "download_and_convert",
+    "download",
     "upload",
     "delete",
     "parse_csv_file",
