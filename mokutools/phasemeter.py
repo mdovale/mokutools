@@ -40,17 +40,20 @@ import numpy as np
 import pandas as pd
 from speckit import compute_spectrum as ltf
 import speckit.dsp as dsp
-from mokutools.filetools import *
+from mokutools.moku_io.core import (
+    list_files,
+    download_and_convert,
+    parse_csv_file,
+    is_mat_file,
+    is_li_file,
+)
 import logging
-
 import os
-import logging
 import subprocess
-import numpy as np
-import pandas as pd
 import ipywidgets as widgets
 from IPython.display import display
 import zipfile
+import scipy.io
 
 
 class MokuPhasemeterObject:
@@ -116,7 +119,7 @@ class MokuPhasemeterObject:
                 raise ValueError("If 'ip' is provided, 'filename' must also be specified.")
 
             logger.debug(f"Fetching file list from Moku device at {ip}...")
-            files = get_file_list(ip)
+            files = list_files(ip)
             matches = [f for f in files if filename in f]
 
             if len(matches) == 0:
@@ -129,10 +132,11 @@ class MokuPhasemeterObject:
                 selected_file = matches[0]
 
             logger.debug(f"Downloading selected file: {selected_file}")
-            download_files(
+            download_and_convert(
                 ip=ip,
-                file_names=selected_file,
+                patterns=selected_file,
                 convert=False,
+                archive=False,
                 output_path=output_path,
                 remove_from_server=remove_from_server
             )
@@ -151,7 +155,7 @@ class MokuPhasemeterObject:
             original_file = self.filename
             is_converted_file = True
             logger.debug(f"{self.filename} is a Matlab file, converting to CSV for further processing...")
-            self.filename = moku_mat_to_csv(self.filename)
+            self.filename = mat_to_csv(self.filename)
 
         elif is_li_file(self.filename):
             original_file = self.filename
