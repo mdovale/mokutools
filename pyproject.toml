@@ -68,7 +68,7 @@ Issues = "https://github.com/mdovale/mokutools/issues"
 packages = ["mokutools"]
 
 [tool.setuptools.package-data]
-mokutools = ["py.typed"]
+# mokutools = ["py.typed"]  # Uncomment if you add type stubs
 
 [project.scripts]
 moku = "mokutools.moku_io.cli:app"

@@ -1,0 +1,19 @@
+# Include license and readme
+include LICENSE
+include README.md
+
+# Include all notebooks
+recursive-include notebooks *.ipynb
+
+# Include all example scripts
+recursive-include examples *.py
+
+# Exclude common unwanted files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude *.so
+global-exclude .DS_Store
+global-exclude *.egg-info
+
