@@ -341,7 +341,8 @@ def parse_csv_file(
     filename: str,
     delimiter: Optional[str] = None,
     logger: Optional[logging.Logger] = None,
-) -> Tuple[int, int, int, List[str]]:
+    header_only: bool = False,
+) -> Tuple[int, Optional[int], int, List[str]]:
     """
     Parse a CSV file. It is potentially packaged in ZIP, TAR, GZ, or 7z format.
 
@@ -353,13 +354,16 @@ def parse_csv_file(
         Delimiter to use when parsing. If None, auto-detection is attempted.
     logger : logging.Logger, optional
         Logger instance for debug messages.
+    header_only : bool, default False
+        If True, stop after reading header and first data line (no full file scan).
+        When True, num_rows is returned as None.
 
     Returns
     -------
     num_cols : int
         Number of columns in the data
-    num_rows : int
-        Total number of rows (including headers)
+    num_rows : int or None
+        Total number of rows (including headers). None when header_only=True.
     num_header_rows : int
         Number of detected header lines
     header : list
@@ -373,13 +377,15 @@ def parse_csv_file(
     if logger is None:
         logger = logging.getLogger(__name__)
 
+    header_symbols = ('#', '%', '!', '@', ';', '&', '*', '/')
+
     def process_stream(file_obj):
-        header_symbols = ['#', '%', '!', '@', ';', '&', '*', '/']
         header = []
         num_header_rows = 0
         num_rows = 0
         data_lines_sample = []
         num_cols = None
+        sep = delimiter if delimiter else ','
 
         # Wrap binary streams in text wrapper
         if isinstance(file_obj.read(0), bytes):
@@ -388,21 +394,28 @@ def parse_csv_file(
 
         for line in file_obj:
             num_rows += 1
-            if any(line.startswith(symbol) for symbol in header_symbols):
+            if any(line.startswith(s) for s in header_symbols):
                 header.append(line)
                 num_header_rows += 1
             else:
-                # Capture a few non-header lines to detect delimiter
-                if len(data_lines_sample) < 5 and line.strip():
-                    data_lines_sample.append(line)
-                # Try to determine number of columns from the first non-empty, non-header line
-                if num_cols is None and line.strip():
-                    try:
-                        sniffed = csv.Sniffer().sniff(''.join(data_lines_sample))
-                        detected_delimiter = sniffed.delimiter
-                    except csv.Error:
-                        detected_delimiter = delimiter if delimiter else ','
-                    num_cols = len(line.strip().split(detected_delimiter))
+                if line.strip():
+                    if len(data_lines_sample) < 5:
+                        data_lines_sample.append(line)
+                    if num_cols is None:
+                        if delimiter is None and data_lines_sample:
+                            try:
+                                sniffed = csv.Sniffer().sniff(
+                                    ''.join(data_lines_sample)
+                                )
+                                sep = sniffed.delimiter
+                            except csv.Error:
+                                pass
+                        num_cols = len(line.strip().split(sep))
+                        if header_only:
+                            return num_cols, None, num_header_rows, header
+            if header_only and num_cols is not None:
+                return num_cols, None, num_header_rows, header
+
         if num_cols is None:
             raise ValueError("No valid data lines found to determine column count.")
         return num_cols, num_rows, num_header_rows, header
@@ -439,10 +452,15 @@ def parse_csv_file(
     if num_header_rows == 0:
         raise ValueError("No header lines detected. Ensure the file format is correct.")
 
-    logger.debug(
-        f"File contains {num_rows} total rows, {num_header_rows} header rows, "
-        f"and {num_cols} columns"
-    )
+    if num_rows is not None:
+        logger.debug(
+            f"File contains {num_rows} total rows, {num_header_rows} header rows, "
+            f"and {num_cols} columns"
+        )
+    else:
+        logger.debug(
+            f"File header: {num_header_rows} rows, {num_cols} columns (header_only)"
+        )
     return num_cols, num_rows, num_header_rows, header
 
 

@@ -178,8 +178,10 @@ class MokuPhasemeterObject:
             logger.debug(f"Removing {original_file}")
             os.remove(original_file)
 
-        # Parse header and structure of CSV file
-        self.ncols, self.nrows, self.header_rows, self.header = parse_csv_file(self.filename, logger=logger)
+        # Parse header only (avoids full file scan; single-pass load below)
+        self.ncols, self.nrows, self.header_rows, self.header = parse_csv_file(
+            self.filename, delimiter=DELIMITER, logger=logger, header_only=True
+        )
         self.fs, self.date = parse_header(self.header, logger=logger)
         self.nchan = (self.ncols - 1) // NCOLS_PER_CHANNEL
         logger.debug(f"Detected {self.nchan} phasemeter channels")
@@ -189,48 +191,64 @@ class MokuPhasemeterObject:
         # Time slicing
         self.start_time = start_time if start_time is not None else 0.0
         self.start_row = int(start_time * self.fs) if start_time is not None else 0
-        self.end_row = self.start_row + int(duration * self.fs) if duration is not None else self.nrows - self.header_rows
-        self.ndata = self.end_row - self.start_row
-        self.duration = self.ndata / self.fs
+        ndata_to_load = (
+            int(duration * self.fs) if duration is not None else None
+        )
+        self.end_row = (
+            self.start_row + ndata_to_load
+            if ndata_to_load is not None
+            else None
+        )
 
-        logger.debug(f"Attempting to load {self.duration:.2f} s ({self.ndata} rows) starting after {self.start_time:.2f} s (row {self.start_row})")
+        logger.debug(
+            f"Attempting to load {ndata_to_load or 'all'} rows starting after "
+            f"{self.start_time:.2f} s (row {self.start_row})"
+        )
         logger.debug("Loading data, please wait...")
 
+        # C engine with sep=',' + skipinitialspace parses ', ' faster than Python engine.
+        # Explicit dtype skips inference and speeds up large-file loading.
         self.df = pd.read_csv(
             self.filename,
-            delimiter=DELIMITER,
+            sep=',',
+            skipinitialspace=True,
             skiprows=self.header_rows + self.start_row,
-            nrows=self.ndata,
+            nrows=ndata_to_load,
             names=self.labels,
-            engine='python'
+            dtype={label: np.float64 for label in self.labels},
+            engine='c',
         )
         if (is_converted_file) and (not archive_file):
-            # If the file has been converted from an original and not archived, delete it
             os.remove(self.filename)
 
-        if len(self.df) != self.ndata:
-            self.end_row = len(self.df) - 1
-            self.ndata = len(self.df)
-
+        self.ndata = len(self.df)
+        self.end_row = (
+            self.start_row + self.ndata if self.end_row is None else self.end_row
+        )
+        self.nrows = self.header_rows + self.start_row + self.ndata
         self.duration = self.ndata / self.fs
 
         logger.debug(f"    * Moku phasemeter data loaded successfully")
         logger.debug(f"    * Loaded {self.ndata} rows, {self.duration:.2f} seconds")
         logger.debug(f"\n{self.df.head()}")
 
-        # Derived quantities
+        # Derived quantities (batched to avoid per-column copy)
+        assign_dict = {}
         for i in range(self.nchan):
-            self.df[f'{i+1}_phase'] = self.df[f'{i+1}_cycles'] * 2 * np.pi
-            self.df[f'{i+1}_freq2phase'] = dsp.frequency2phase(self.df[f'{i+1}_freq'], self.fs)
+            assign_dict[f'{i+1}_phase'] = self.df[f'{i+1}_cycles'] * 2 * np.pi
+            assign_dict[f'{i+1}_freq2phase'] = dsp.frequency2phase(
+                self.df[f'{i+1}_freq'], self.fs
+            )
+        self.df = self.df.assign(**assign_dict)
 
         # Optional spectrum computation
         self.ps = {}
         if len(spectrums) > 0:
             self.spectrum(spectrums, *args, **kwargs)
 
-        # Optional label prefixing
+        # Optional label prefixing (in-place column rename, no full copy)
         if prefix is not None:
-            self.df = self.df.add_prefix(prefix)
+            self.df.columns = [f"{prefix}{c}" for c in self.df.columns]
 
     def data_labels(self):
         """
@@ -399,7 +417,11 @@ def mat_to_csv(mat_file, out_file=None):
     if out_file is None:
         out_file = mat_file + '.csv'
 
+    # pd.DataFrame.to_csv is faster than np.savetxt for large arrays (C-backed)
     with open(out_file, 'w', newline='') as f:
-        np.savetxt(f, data_array, delimiter=', ', header=header, comments="", fmt="%.14f")
+        f.write(header.rstrip() + '\n')
+        pd.DataFrame(data_array).to_csv(
+            f, header=False, index=False, sep=DELIMITER, float_format='%.14f'
+        )
 
     return out_file
