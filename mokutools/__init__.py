@@ -34,7 +34,7 @@ A Python library for file management in Liquid Instruments Moku:Lab and Moku:Pro
 with additional features for processing and analyzing Moku Phasemeter data.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.3"
 
 __all__ = [
     "__version__",
