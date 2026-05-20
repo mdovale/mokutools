@@ -14,6 +14,7 @@ from py7zr import SevenZipFile
 import os
 import tempfile
 import scipy.io
+from pathlib import Path
 
 from mokutools.moku_io.core import (
     list_files,
@@ -22,6 +23,9 @@ from mokutools.moku_io.core import (
     delete,
     parse_csv_file,
     is_mat_file,
+    is_zip_with_single_mat,
+    extract_mat_from_zip,
+    resolve_mat_path,
     is_li_file,
     read_lines,
     get_columns_with_nans,
@@ -642,6 +646,46 @@ col1,col2
         with patch.object(logger, 'debug') as mock_debug:
             num_cols, num_rows, num_header_rows, header = parse_csv_file(str(csv_file), logger=logger)
             assert mock_debug.called
+
+
+class TestZipMatSupport:
+    """Tests for zip archives containing a single .mat file."""
+
+    def test_is_zip_with_single_mat_true(self, moku_mat_zip):
+        assert is_zip_with_single_mat(str(moku_mat_zip)) is True
+
+    def test_is_zip_with_single_mat_false_for_csv_zip(self):
+        csv_zip = Path(__file__).parent / "MokuPhasemeterData_MokuProTest.csv.zip"
+        if not csv_zip.exists():
+            pytest.skip(f"Test file not found: {csv_zip}")
+        assert is_zip_with_single_mat(str(csv_zip)) is False
+
+    def test_is_zip_with_single_mat_false_for_plain_file(self, tmp_path):
+        txt_file = tmp_path / "test.txt"
+        txt_file.write_text("hello")
+        assert is_zip_with_single_mat(str(txt_file)) is False
+
+    def test_extract_mat_from_zip(self, moku_mat_zip, tmp_path):
+        extracted = extract_mat_from_zip(str(moku_mat_zip), out_dir=str(tmp_path / "out"))
+        assert extracted.endswith('.mat')
+        assert Path(extracted).exists()
+        assert is_mat_file(extracted)
+
+    def test_extract_mat_from_zip_raises_for_multiple_mats(self, tmp_path):
+        zip_file = tmp_path / "multi.mat.zip"
+        with zipfile.ZipFile(zip_file, 'w') as zf:
+            zf.writestr("a.mat", b'')
+            zf.writestr("b.mat", b'')
+        with pytest.raises(ValueError, match="exactly one .mat"):
+            extract_mat_from_zip(str(zip_file))
+
+    def test_resolve_mat_path_from_zip(self, moku_mat_zip):
+        resolved = resolve_mat_path(str(moku_mat_zip))
+        assert resolved is not None
+        assert resolved.endswith('.mat')
+
+    def test_is_mat_file_accepts_mat_zip(self, moku_mat_zip):
+        assert is_mat_file(str(moku_mat_zip)) is True
 
 
 class TestIsMatFile:

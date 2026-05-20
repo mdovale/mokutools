@@ -464,9 +464,116 @@ def parse_csv_file(
     return num_cols, num_rows, num_header_rows, header
 
 
+def _mat_members_in_zip(zip_ref: zipfile.ZipFile) -> List[str]:
+    """Return non-directory .mat member paths inside an open ZipFile."""
+    return [
+        name for name in zip_ref.namelist()
+        if not name.endswith('/') and name.lower().endswith('.mat')
+    ]
+
+
+def is_zip_with_single_mat(file_path: str) -> bool:
+    """
+    Check whether a path is a zip archive containing exactly one .mat member.
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the file to check.
+
+    Returns
+    -------
+    bool
+        True if the file is a zip archive with exactly one .mat member.
+    """
+    if not zipfile.is_zipfile(file_path):
+        return False
+    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        return len(_mat_members_in_zip(zip_ref)) == 1
+
+
+def extract_mat_from_zip(zip_path: str, out_dir: Optional[str] = None) -> str:
+    """
+    Extract the sole .mat member from a zip archive.
+
+    Parameters
+    ----------
+    zip_path : str
+        Path to a zip archive containing exactly one .mat file.
+    out_dir : str, optional
+        Directory for the extracted file. If None, a temporary directory is created.
+
+    Returns
+    -------
+    str
+        Path to the extracted .mat file.
+
+    Raises
+    ------
+    ValueError
+        If the path is not a zip archive or does not contain exactly one .mat file.
+    """
+    if not zipfile.is_zipfile(zip_path):
+        raise ValueError(f"Not a zip archive: {zip_path}")
+
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        members = _mat_members_in_zip(zip_ref)
+        if len(members) != 1:
+            raise ValueError(
+                f"Expected exactly one .mat file in zip, found {len(members)}: {members}"
+            )
+        member = members[0]
+        if out_dir is None:
+            out_dir = tempfile.mkdtemp(prefix='mokutools_mat_')
+        else:
+            os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, os.path.basename(member))
+        with zip_ref.open(member) as src, open(out_path, 'wb') as dst:
+            shutil.copyfileobj(src, dst)
+    return out_path
+
+
+def resolve_mat_path(file_path: str, out_dir: Optional[str] = None) -> Optional[str]:
+    """
+    Return a filesystem path to a readable .mat file, or None if unsupported.
+
+    Plain ``.mat`` files are returned unchanged. Zip archives containing exactly
+    one ``.mat`` member are extracted first (see :func:`extract_mat_from_zip`).
+
+    Parameters
+    ----------
+    file_path : str
+        Path to a ``.mat`` file or a ``.zip`` archive with a single ``.mat`` member.
+    out_dir : str, optional
+        Directory used when extracting from a zip archive.
+
+    Returns
+    -------
+    str or None
+        Path to a readable ``.mat`` file, or None if the input is not MAT data.
+    """
+    try:
+        scipy.io.whosmat(file_path)
+        return file_path
+    except Exception:
+        pass
+
+    if is_zip_with_single_mat(file_path):
+        extracted = extract_mat_from_zip(file_path, out_dir=out_dir)
+        try:
+            scipy.io.whosmat(extracted)
+            return extracted
+        except Exception:
+            return None
+    return None
+
+
 def is_mat_file(file_path: str) -> bool:
     """
     Check if a file is a MATLAB .mat file by attempting to read its contents.
+
+    Also returns True for a zip archive that contains exactly one valid ``.mat``
+    member (the common Moku export layout).
 
     Parameters
     ----------
@@ -478,11 +585,7 @@ def is_mat_file(file_path: str) -> bool:
     bool
         True if the file is a valid MATLAB .mat file, False otherwise.
     """
-    try:
-        scipy.io.whosmat(file_path)  # Try reading variable names in the file
-        return True
-    except Exception:
-        return False
+    return resolve_mat_path(file_path) is not None
 
 
 def is_li_file(file_path: str) -> bool:

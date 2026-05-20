@@ -10,7 +10,7 @@ A Python library for file management in Liquid Instruments Moku:Lab and Moku:Pro
 - **Data Loading**: Load and parse files from Moku Phasemeter measurements
 - **Spectral Analysis**: Compute spectral density estimates of phase and frequency via SpecKit
 - **Multiple Interfaces**: Use via command-line, Python scripts, or Jupyter notebooks
-- **File Format Support**: Handle `.csv`, `.mat`, and `.li` file formats with automatic conversion
+- **File Format Support**: Handle `.csv`, `.mat`, `.zip` (single `.mat` or CSV inside), and `.li` file formats with automatic conversion
 
 ## Installation
 
@@ -49,8 +49,9 @@ pip install -e ".[dev]"
 ```python
 from mokutools.phasemeter import MokuPhasemeterObject
 
-# Load data from a local file
+# Load data from a local file (.csv, .mat, or .zip with a single .mat inside)
 data = MokuPhasemeterObject('measurement.csv')
+# data = MokuPhasemeterObject('measurement.mat.zip')
 
 # Or download and load directly from a Moku device
 data = MokuPhasemeterObject(

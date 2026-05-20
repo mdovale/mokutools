@@ -40,6 +40,19 @@ class TestMokuPhasemeterObject:
         assert obj.df is not None
         assert len(obj.df) > 0
 
+    def test_init_with_mat_zip_file(self, moku_mat_zip):
+        """Test initialization with a zip file containing a single .mat file."""
+        obj = MokuPhasemeterObject(filename=str(moku_mat_zip))
+
+        assert obj.fs is not None
+        assert obj.fs > 0
+        assert obj.date is not None
+        assert obj.nchan > 0
+        assert len(obj.labels) > 0
+        assert obj.df is not None
+        assert len(obj.df) > 0
+        assert str(obj.filename).endswith('.csv')
+
     def test_init_with_time_slicing(self):
         """Test initialization with time slicing parameters."""
         test_file = Path(__file__).parent / "MokuPhasemeterData_MokuProTest.csv.zip"
